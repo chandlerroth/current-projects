@@ -162,8 +162,8 @@ func installRepo(projectsDir, repoURL string) error {
 		return fmt.Errorf("invalid repository path: %s", repoURL)
 	}
 
-	username := pathParts[0]
-	repoName := pathParts[1]
+	username := strings.ToLower(pathParts[0])
+	repoName := strings.ToLower(pathParts[1])
 
 	userDir := filepath.Join(projectsDir, username)
 	if err := ensureDirectory(userDir); err != nil {
@@ -219,8 +219,8 @@ func runStatus(cmd *cobra.Command, args []string) {
 			continue
 		}
 
-		username := pathParts[0]
-		repoName := pathParts[1]
+		username := strings.ToLower(pathParts[0])
+		repoName := strings.ToLower(pathParts[1])
 		repoPath := filepath.Join(projectsDir, username, repoName)
 
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
