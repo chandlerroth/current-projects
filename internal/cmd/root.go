@@ -392,8 +392,8 @@ func executeGitWithOutput(dir string, args ...string) (string, error) {
 func executeGitQuiet(dir string, args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	return cmd.Run()
 }
 
