@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,13 @@ var addCmd = &cobra.Command{
 	Run:     runAdd,
 }
 
+var cdCmd = &cobra.Command{
+	Use:   "cd [index]",
+	Short: "Change directory to a project by index",
+	Args:  cobra.ExactArgs(1),
+	Run:   runCd,
+}
+
 const (
 	colorReset  = "\033[0m"
 	colorRed    = "\033[31m"
@@ -62,6 +70,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(addCmd)
+	rootCmd.AddCommand(cdCmd)
 }
 
 // Execute runs the root command
@@ -271,8 +280,8 @@ func runStatus(cmd *cobra.Command, args []string) {
 	s.Stop()
 
 	sort.Strings(statuses)
-	for _, status := range statuses {
-		fmt.Println(status)
+	for i, status := range statuses {
+		fmt.Printf("%3d %s\n", i+1, status)
 	}
 }
 
@@ -412,4 +421,77 @@ func runAdd(cmd *cobra.Command, args []string) {
 	if err := installRepo(projectsDir, repoURL); err != nil {
 		log.Printf("Error installing %s: %v", repoURL, err)
 	}
+}
+
+func runCd(cmd *cobra.Command, args []string) {
+	index, err := strconv.Atoi(args[0])
+	if err != nil {
+		log.Fatal("Invalid index number")
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	projectsDir := filepath.Join(homeDir, "Projects")
+	currentProjectsFile := filepath.Join(projectsDir, ".current-projects")
+
+	repos, err := readRepoList(currentProjectsFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Create a sorted list of repos based on their display names
+	type repoInfo struct {
+		displayName string
+		repoURL     string
+	}
+	var repoList []repoInfo
+
+	for _, repo := range repos {
+		parts := strings.Split(repo, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
+		if len(pathParts) != 2 {
+			continue
+		}
+		displayName := fmt.Sprintf("%s/%s",
+			strings.ToLower(pathParts[0]),
+			strings.ToLower(pathParts[1]))
+		repoList = append(repoList, repoInfo{displayName, repo})
+	}
+
+	// Sort by display name
+	sort.Slice(repoList, func(i, j int) bool {
+		return repoList[i].displayName < repoList[j].displayName
+	})
+
+	index--
+	if index < 0 || index >= len(repoList) {
+		log.Fatal("ID out of range")
+	}
+
+	repo := repoList[index].repoURL
+	parts := strings.Split(repo, ":")
+	if len(parts) != 2 {
+		log.Fatal("Invalid repo URL format")
+	}
+
+	pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
+	if len(pathParts) != 2 {
+		log.Fatal("Invalid repository path")
+	}
+
+	username := strings.ToLower(pathParts[0])
+	repoName := strings.ToLower(pathParts[1])
+	repoPath := filepath.Join(projectsDir, username, repoName)
+
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		log.Fatal("Repository not installed")
+	}
+
+	fmt.Println(repoPath)
 }
