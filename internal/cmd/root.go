@@ -220,9 +220,37 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 	results := make(chan statusResult, len(repos))
 
+	maxRepoLength := 0
+	maxBranchLength := 0
+	for _, repo := range repos {
+		parts := strings.Split(repo, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
+		if len(pathParts) != 2 {
+			continue
+		}
+		repoDisplay := fmt.Sprintf("%s/%s",
+			strings.ToLower(pathParts[0]),
+			strings.ToLower(pathParts[1]))
+		if len(repoDisplay) > maxRepoLength {
+			maxRepoLength = len(repoDisplay)
+		}
+
+		// Get branch name length
+		repoPath := filepath.Join(projectsDir, strings.ToLower(pathParts[0]), strings.ToLower(pathParts[1]))
+		if branch, err := executeGitWithOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
+			branch = strings.TrimSpace(branch)
+			if len(branch) > maxBranchLength {
+				maxBranchLength = len(branch)
+			}
+		}
+	}
+
 	for _, repo := range repos {
 		go func(repo string) {
-			status, err := getRepoStatus(projectsDir, repo)
+			status, err := getRepoStatus(projectsDir, repo, maxRepoLength, maxBranchLength)
 			results <- statusResult{repo: repo, status: status, err: err}
 		}(repo)
 	}
@@ -245,7 +273,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 }
 
-func getRepoStatus(projectsDir, repo string) (string, error) {
+func getRepoStatus(projectsDir, repo string, padRepoLength, padBranchLength int) (string, error) {
 	parts := strings.Split(repo, ":")
 	if len(parts) != 2 {
 		return "", fmt.Errorf("invalid repo URL: %s", repo)
@@ -274,21 +302,38 @@ func getRepoStatus(projectsDir, repo string) (string, error) {
 		return "", fmt.Errorf("error fetching: %v", err)
 	}
 
-	status := fmt.Sprintf("%s/%s - git:(%s%s%s)",
-		username, repoName,
-		colorRed, branch, colorReset)
+	repoDisplay := fmt.Sprintf("%s/%s", username, repoName)
+
+	status := fmt.Sprintf("%-*s git:(%s%s%s)%s",
+		padRepoLength, repoDisplay,
+		colorBlue, branch, colorReset,
+		strings.Repeat(" ", padBranchLength-len(branch)))
 
 	isClean := true
-	behindCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "HEAD..@{u}")
-	if err == nil && strings.TrimSpace(behindCount) != "0" {
-		status += fmt.Sprintf(" %s[%s↓]%s", colorBlue, strings.TrimSpace(behindCount), colorReset)
-		isClean = false
-	}
+	hasUpstream, _ := executeGitWithOutput(repoPath, "rev-parse", "--abbrev-ref", "@{u}")
+	if hasUpstream != "" {
+		behindCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "HEAD..@{u}")
+		if err == nil && strings.TrimSpace(behindCount) != "0" {
+			status += fmt.Sprintf(" %s[%s↓]%s", colorBlue, strings.TrimSpace(behindCount), colorReset)
+			isClean = false
+		}
 
-	aheadCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "@{u}..HEAD")
-	if err == nil && strings.TrimSpace(aheadCount) != "0" {
-		status += fmt.Sprintf(" %s[%s↑]%s", colorOrange, strings.TrimSpace(aheadCount), colorReset)
-		isClean = false
+		aheadCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "@{u}..HEAD")
+		if err == nil && strings.TrimSpace(aheadCount) != "0" {
+			status += fmt.Sprintf(" %s[%s↑]%s", colorOrange, strings.TrimSpace(aheadCount), colorReset)
+			isClean = false
+		}
+	} else {
+		mainBranch := "main"
+		if _, err := executeGitWithOutput(repoPath, "rev-parse", "--verify", "main"); err != nil {
+			mainBranch = "master"
+		}
+
+		commitCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", fmt.Sprintf("%s..HEAD", mainBranch))
+		if err == nil && strings.TrimSpace(commitCount) != "0" {
+			status += fmt.Sprintf(" %s[%s↑]%s", colorOrange, strings.TrimSpace(commitCount), colorReset)
+			isClean = false
+		}
 	}
 
 	changedFiles, err := executeGitWithOutput(repoPath, "status", "--porcelain")
