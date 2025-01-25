@@ -442,7 +442,6 @@ func runCd(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 
-	// Create a sorted list of repos based on their display names
 	type repoInfo struct {
 		displayName string
 		repoURL     string
@@ -464,7 +463,6 @@ func runCd(cmd *cobra.Command, args []string) {
 		repoList = append(repoList, repoInfo{displayName, repo})
 	}
 
-	// Sort by display name
 	sort.Slice(repoList, func(i, j int) bool {
 		return repoList[i].displayName < repoList[j].displayName
 	})
