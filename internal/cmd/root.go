@@ -7,8 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
+	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 )
 
@@ -206,72 +209,102 @@ func runStatus(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 
+	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+	s.Suffix = " Checking projects..."
+	s.Start()
+
+	type statusResult struct {
+		repo   string
+		status string
+		err    error
+	}
+	results := make(chan statusResult, len(repos))
+
 	for _, repo := range repos {
-		parts := strings.Split(repo, ":")
-		if len(parts) != 2 {
-			log.Printf("Skipping invalid repo URL: %s", repo)
+		go func(repo string) {
+			status, err := getRepoStatus(projectsDir, repo)
+			results <- statusResult{repo: repo, status: status, err: err}
+		}(repo)
+	}
+
+	var statuses []string
+	for i := 0; i < len(repos); i++ {
+		result := <-results
+		if result.err != nil {
+			log.Printf("Error checking status for %s: %v", result.repo, result.err)
 			continue
 		}
+		statuses = append(statuses, result.status)
+	}
 
-		pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
-		if len(pathParts) != 2 {
-			log.Printf("Skipping invalid repo path: %s", repo)
-			continue
-		}
+	s.Stop()
 
-		username := strings.ToLower(pathParts[0])
-		repoName := strings.ToLower(pathParts[1])
-		repoPath := filepath.Join(projectsDir, username, repoName)
-
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			fmt.Printf("%s/%s: Not installed\n", username, repoName)
-			continue
-		}
-
-		branch, err := executeGitWithOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
-		if err != nil {
-			log.Printf("Error getting branch for %s: %v", repoPath, err)
-			continue
-		}
-		branch = strings.TrimSpace(branch)
-
-		if err := executeGitQuiet(repoPath, "fetch"); err != nil {
-			log.Printf("Error fetching %s: %v", repoPath, err)
-			continue
-		}
-
-		status := fmt.Sprintf("%s/%s - git:(%s%s%s)",
-			username, repoName,
-			colorRed, branch, colorReset)
-
-		isClean := true
-		behindCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "HEAD..@{u}")
-		if err == nil && strings.TrimSpace(behindCount) != "0" {
-			status += fmt.Sprintf(" %s[%s↓]%s", colorBlue, strings.TrimSpace(behindCount), colorReset)
-			isClean = false
-		}
-
-		aheadCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "@{u}..HEAD")
-		if err == nil && strings.TrimSpace(aheadCount) != "0" {
-			status += fmt.Sprintf(" %s[%s↑]%s", colorOrange, strings.TrimSpace(aheadCount), colorReset)
-			isClean = false
-		}
-
-		changedFiles, err := executeGitWithOutput(repoPath, "status", "--porcelain")
-		if err == nil && changedFiles != "" {
-			fileCount := len(strings.Split(strings.TrimSpace(changedFiles), "\n"))
-			if fileCount > 0 {
-				status += fmt.Sprintf(" %s[%d changes]%s", colorRed, fileCount, colorReset)
-				isClean = false
-			}
-		}
-
-		if isClean {
-			status += fmt.Sprintf(" %s[✓ clean]%s", colorGreen, colorReset)
-		}
-
+	sort.Strings(statuses)
+	for _, status := range statuses {
 		fmt.Println(status)
 	}
+}
+
+func getRepoStatus(projectsDir, repo string) (string, error) {
+	parts := strings.Split(repo, ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid repo URL: %s", repo)
+	}
+
+	pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
+	if len(pathParts) != 2 {
+		return "", fmt.Errorf("invalid repo path: %s", repo)
+	}
+
+	username := strings.ToLower(pathParts[0])
+	repoName := strings.ToLower(pathParts[1])
+	repoPath := filepath.Join(projectsDir, username, repoName)
+
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return fmt.Sprintf("%s/%s: Not installed", username, repoName), nil
+	}
+
+	branch, err := executeGitWithOutput(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("error getting branch: %v", err)
+	}
+	branch = strings.TrimSpace(branch)
+
+	if err := executeGitQuiet(repoPath, "fetch"); err != nil {
+		return "", fmt.Errorf("error fetching: %v", err)
+	}
+
+	status := fmt.Sprintf("%s/%s - git:(%s%s%s)",
+		username, repoName,
+		colorRed, branch, colorReset)
+
+	isClean := true
+	behindCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "HEAD..@{u}")
+	if err == nil && strings.TrimSpace(behindCount) != "0" {
+		status += fmt.Sprintf(" %s[%s↓]%s", colorBlue, strings.TrimSpace(behindCount), colorReset)
+		isClean = false
+	}
+
+	aheadCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "@{u}..HEAD")
+	if err == nil && strings.TrimSpace(aheadCount) != "0" {
+		status += fmt.Sprintf(" %s[%s↑]%s", colorOrange, strings.TrimSpace(aheadCount), colorReset)
+		isClean = false
+	}
+
+	changedFiles, err := executeGitWithOutput(repoPath, "status", "--porcelain")
+	if err == nil && changedFiles != "" {
+		fileCount := len(strings.Split(strings.TrimSpace(changedFiles), "\n"))
+		if fileCount > 0 {
+			status += fmt.Sprintf(" %s[%d changes]%s", colorRed, fileCount, colorReset)
+			isClean = false
+		}
+	}
+
+	if isClean {
+		status += fmt.Sprintf(" %s[✓ clean]%s", colorGreen, colorReset)
+	}
+
+	return status, nil
 }
 
 func executeGitWithOutput(dir string, args ...string) (string, error) {
