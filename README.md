@@ -40,7 +40,7 @@ prj status
 When running `prj status`, you'll see various indicators:
 - `[↓]` - Number of commits behind remote
 - `[↑]` - Number of commits ahead of remote
-- `[changes]` - Number of modified files
+- `[N changes]` - Number of modified files
 - `[✓ clean]` - Repository is clean with no changes
 
 Example output:
