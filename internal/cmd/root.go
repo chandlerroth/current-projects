@@ -22,9 +22,10 @@ var rootCmd = &cobra.Command{
 }
 
 var installCmd = &cobra.Command{
-	Use:   "install",
-	Short: "Install all projects from .current-projects file",
-	Run:   runInstall,
+	Use:     "install",
+	Aliases: []string{"i"},
+	Short:   "Install all projects from .current-projects file",
+	Run:     runInstall,
 }
 
 var initCmd = &cobra.Command{
@@ -34,16 +35,18 @@ var initCmd = &cobra.Command{
 }
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show git status for all projects",
-	Run:   runStatus,
+	Use:     "status",
+	Aliases: []string{"s"},
+	Short:   "Show git status for all projects",
+	Run:     runStatus,
 }
 
 var addCmd = &cobra.Command{
-	Use:   "add [repo]",
-	Short: "Add a repository to projects and install it",
-	Args:  cobra.ExactArgs(1),
-	Run:   runAdd,
+	Use:     "add [repo]",
+	Aliases: []string{"a"},
+	Short:   "Add a repository to projects and install it",
+	Args:    cobra.ExactArgs(1),
+	Run:     runAdd,
 }
 
 const (
