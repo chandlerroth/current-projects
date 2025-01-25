@@ -45,7 +45,7 @@ When running `prj status`, you'll see various indicators:
 
 Example output:
 ```
-~/Projects/chandlerroth/current-projects - git:(master)
+  1 chandlerroth/current-projects    git:(main) [✓ clean]
 ```
 
 ## Project Structure
