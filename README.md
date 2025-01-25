@@ -18,12 +18,12 @@ prj init
 ```
 This creates a `~/Projects` directory and a `.current-projects` file.
 
-2. Add repositories to track:
+2. Add new repos (with auto cloning):
 ```bash
 prj add git@github.com:username/repo.git
 ```
 
-3. Check status of all projects:
+3. Check git status of all projects:
 ```bash
 prj status
 ```
