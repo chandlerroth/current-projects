@@ -44,10 +44,11 @@ var addCmd = &cobra.Command{
 }
 
 const (
-	colorReset = "\033[0m"
-	colorRed   = "\033[31m"
-	colorGreen = "\033[32m"
-	colorBlue  = "\033[34m"
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorBlue   = "\033[34m"
+	colorOrange = "\033[33m"
 )
 
 func init() {
@@ -239,16 +240,21 @@ func runStatus(cmd *cobra.Command, args []string) {
 			continue
 		}
 
-		status := fmt.Sprintf("%s/%s (%s)", username, repoName, branch)
+		status := fmt.Sprintf("%s/%s - git:(%s%s%s)",
+			username, repoName,
+			colorRed, branch, colorReset)
 
+		isClean := true
 		behindCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "HEAD..@{u}")
 		if err == nil && strings.TrimSpace(behindCount) != "0" {
 			status += fmt.Sprintf(" %s[%s↓]%s", colorBlue, strings.TrimSpace(behindCount), colorReset)
+			isClean = false
 		}
 
 		aheadCount, err := executeGitWithOutput(repoPath, "rev-list", "--count", "@{u}..HEAD")
 		if err == nil && strings.TrimSpace(aheadCount) != "0" {
-			status += fmt.Sprintf(" %s[%s↑]%s", colorGreen, strings.TrimSpace(aheadCount), colorReset)
+			status += fmt.Sprintf(" %s[%s↑]%s", colorOrange, strings.TrimSpace(aheadCount), colorReset)
+			isClean = false
 		}
 
 		changedFiles, err := executeGitWithOutput(repoPath, "status", "--porcelain")
@@ -256,7 +262,12 @@ func runStatus(cmd *cobra.Command, args []string) {
 			fileCount := len(strings.Split(strings.TrimSpace(changedFiles), "\n"))
 			if fileCount > 0 {
 				status += fmt.Sprintf(" %s[%d changes]%s", colorRed, fileCount, colorReset)
+				isClean = false
 			}
+		}
+
+		if isClean {
+			status += fmt.Sprintf(" %s[✓ clean]%s", colorGreen, colorReset)
 		}
 
 		fmt.Println(status)
