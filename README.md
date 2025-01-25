@@ -1,6 +1,8 @@
-# prj - Meta Repo Manager
+# prj
 
-A simple CLI tool to manage and organize your git projects in a consistent directory structure.
+I get it. As a 10x software enginer, its really hard to manage all of the repos you're working on. Now you can with this simple CLI tool to manage and organize your git projects in a consistent directory structure.
+
+You're a pro. Get pro level repo management with `prj`.
 
 ## Installation
 
