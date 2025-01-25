@@ -57,6 +57,13 @@ var cdCmd = &cobra.Command{
 	Run:   runCd,
 }
 
+var listCmd = &cobra.Command{
+	Use:     "list",
+	Aliases: []string{"l"},
+	Short:   "List all projects without git status",
+	Run:     runList,
+}
+
 const (
 	colorReset  = "\033[0m"
 	colorRed    = "\033[31m"
@@ -71,6 +78,7 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(cdCmd)
+	rootCmd.AddCommand(listCmd)
 }
 
 // Execute runs the root command
@@ -492,4 +500,45 @@ func runCd(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println(repoPath)
+}
+
+func runList(cmd *cobra.Command, args []string) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	projectsDir := filepath.Join(homeDir, "Projects")
+	currentProjectsFile := filepath.Join(projectsDir, ".current-projects")
+
+	if _, err := os.Stat(currentProjectsFile); os.IsNotExist(err) {
+		fmt.Println("Projects directory not initialized. Please run 'prj init' first")
+		os.Exit(1)
+	}
+
+	repos, err := readRepoList(currentProjectsFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var displayNames []string
+	for _, repo := range repos {
+		parts := strings.Split(repo, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
+		if len(pathParts) != 2 {
+			continue
+		}
+		displayName := fmt.Sprintf("%s/%s",
+			strings.ToLower(pathParts[0]),
+			strings.ToLower(pathParts[1]))
+		displayNames = append(displayNames, displayName)
+	}
+
+	sort.Strings(displayNames)
+	for i, name := range displayNames {
+		fmt.Printf("%3d %s\n", i+1, name)
+	}
 }
