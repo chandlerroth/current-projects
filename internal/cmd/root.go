@@ -20,6 +20,16 @@ var rootCmd = &cobra.Command{
 	Use:   "prj",
 	Short: "Project management tool",
 	Long:  `A CLI tool to manage and organize your git projects.`,
+	Args:  cobra.ArbitraryArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 1 {
+			if index, err := strconv.Atoi(args[0]); err == nil {
+				runCd(cmd, []string{strconv.Itoa(index)})
+				return
+			}
+		}
+		cmd.Help()
+	},
 }
 
 var installCmd = &cobra.Command{
