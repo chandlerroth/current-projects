@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -243,12 +244,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 	s.Suffix = " Checking projects..."
 	s.Start()
 
-	type statusResult struct {
-		repo   string
-		status string
-		err    error
-	}
-	results := make(chan statusResult, len(repos))
+	// Create ordered slice of results
+	results := make([]string, len(repos))
+	var wg sync.WaitGroup
 
 	maxRepoLength := 0
 	maxBranchLength := 0
@@ -278,28 +276,27 @@ func runStatus(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	for _, repo := range repos {
-		go func(repo string) {
-			status, err := getRepoStatus(projectsDir, repo, maxRepoLength, maxBranchLength)
-			results <- statusResult{repo: repo, status: status, err: err}
-		}(repo)
+	for i, repo := range repos {
+		wg.Add(1)
+		go func(repo string, index int) {
+			defer wg.Done()
+			if status, err := getRepoStatus(projectsDir, repo, maxRepoLength, maxBranchLength); err == nil {
+				results[index] = status
+			} else {
+				log.Printf("Error checking status for %s: %v", repo, err)
+			}
+		}(repo, i)
 	}
 
-	var statuses []string
-	for i := 0; i < len(repos); i++ {
-		result := <-results
-		if result.err != nil {
-			log.Printf("Error checking status for %s: %v", result.repo, result.err)
-			continue
-		}
-		statuses = append(statuses, result.status)
-	}
-
+	wg.Wait()
 	s.Stop()
 
-	sort.Strings(statuses)
-	for i, status := range statuses {
-		fmt.Printf("%3d %s\n", i+1, status)
+	count := 1
+	for _, status := range results {
+		if status != "" {
+			fmt.Printf("%3d %s\n", count, status)
+			count++
+		}
 	}
 }
 
@@ -547,7 +544,6 @@ func runList(cmd *cobra.Command, args []string) {
 		displayNames = append(displayNames, displayName)
 	}
 
-	sort.Strings(displayNames)
 	for i, name := range displayNames {
 		fmt.Printf("%3d %s\n", i+1, name)
 	}
