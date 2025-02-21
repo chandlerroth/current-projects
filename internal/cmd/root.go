@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -244,6 +243,13 @@ func runStatus(cmd *cobra.Command, args []string) {
 	s.Suffix = " Checking projects..."
 	s.Start()
 
+	type statusResult struct {
+		repo   string
+		status string
+		index  int
+		err    error
+	}
+
 	// Create ordered slice of results
 	results := make([]string, len(repos))
 	var wg sync.WaitGroup
@@ -457,37 +463,12 @@ func runCd(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 
-	type repoInfo struct {
-		displayName string
-		repoURL     string
-	}
-	var repoList []repoInfo
-
-	for _, repo := range repos {
-		parts := strings.Split(repo, ":")
-		if len(parts) != 2 {
-			continue
-		}
-		pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
-		if len(pathParts) != 2 {
-			continue
-		}
-		displayName := fmt.Sprintf("%s/%s",
-			strings.ToLower(pathParts[0]),
-			strings.ToLower(pathParts[1]))
-		repoList = append(repoList, repoInfo{displayName, repo})
-	}
-
-	sort.Slice(repoList, func(i, j int) bool {
-		return repoList[i].displayName < repoList[j].displayName
-	})
-
 	index--
-	if index < 0 || index >= len(repoList) {
+	if index < 0 || index >= len(repos) {
 		log.Fatal("ID out of range")
 	}
 
-	repo := repoList[index].repoURL
+	repo := repos[index]
 	parts := strings.Split(repo, ":")
 	if len(parts) != 2 {
 		log.Fatal("Invalid repo URL format")
