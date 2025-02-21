@@ -243,13 +243,6 @@ func runStatus(cmd *cobra.Command, args []string) {
 	s.Suffix = " Checking projects..."
 	s.Start()
 
-	type statusResult struct {
-		repo   string
-		status string
-		index  int
-		err    error
-	}
-
 	// Create ordered slice of results
 	results := make([]string, len(repos))
 	var wg sync.WaitGroup
