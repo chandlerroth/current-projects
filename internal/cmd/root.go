@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -220,6 +221,67 @@ func executeGit(args ...string) error {
 	return cmd.Run()
 }
 
+func findUnexpectedDirectories(projectsDir string, repos []string) []string {
+	var unexpected []string
+	knownPaths := make(map[string]bool)
+
+	// Build map of known paths from repos
+	for _, repo := range repos {
+		parts := strings.Split(repo, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		pathParts := strings.Split(strings.TrimSuffix(parts[1], ".git"), "/")
+		if len(pathParts) != 2 {
+			continue
+		}
+
+		username := strings.ToLower(pathParts[0])
+		repoName := strings.ToLower(pathParts[1])
+		knownPaths[username] = true
+		knownPaths[filepath.Join(username, repoName)] = true
+	}
+
+	// Check first level (owner directories)
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == ".git" {
+			continue
+		}
+
+		ownerDir := entry.Name()
+		ownerPath := filepath.Join(projectsDir, ownerDir)
+		if !knownPaths[ownerDir] {
+			unexpected = append(unexpected, ownerPath)
+			continue
+		}
+
+		// Check second level (repo directories)
+		repoEntries, err := os.ReadDir(ownerPath)
+		if err != nil {
+			continue
+		}
+
+		for _, repoEntry := range repoEntries {
+			if !repoEntry.IsDir() || repoEntry.Name() == ".git" {
+				continue
+			}
+
+			relPath := filepath.Join(ownerDir, repoEntry.Name())
+			if !knownPaths[relPath] {
+				unexpected = append(unexpected, filepath.Join(projectsDir, relPath))
+			}
+		}
+	}
+
+	sort.Strings(unexpected)
+	return unexpected
+}
+
 func runStatus(cmd *cobra.Command, args []string) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -295,6 +357,14 @@ func runStatus(cmd *cobra.Command, args []string) {
 		if status != "" {
 			fmt.Printf("%3d %s\n", count, status)
 			count++
+		}
+	}
+
+	unexpectedDirs := findUnexpectedDirectories(projectsDir, repos)
+	if len(unexpectedDirs) > 0 {
+		fmt.Println("\nUnexpected directories found:")
+		for _, dir := range unexpectedDirs {
+			fmt.Printf("  - %s\n", dir)
 		}
 	}
 }
