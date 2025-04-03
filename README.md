@@ -1,6 +1,6 @@
 # prj
 
-I get it. You're a 10x software enginer, and its not easy to manage all of the repos you're working on. Now you can with this simple CLI tool to manage and organize your git projects in a consistent directory structure.
+We get it. You're a 10x software enginer, and its not easy to manage all of the repos you're working on. Now you can with this simple CLI tool to manage and organize your git projects in a consistent directory structure.
 
 You're a pro. Get pro level repo management with `prj`.
 
