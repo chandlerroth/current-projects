@@ -8,17 +8,23 @@
 
 prj() {
   if [[ "$1" == "l" ]] || [[ "$1" == "list" ]]; then
-    local selected_path=$(command prj "$@")
+    local tmpfile=$(mktemp)
+    command prj "$@" > "$tmpfile"
+    local selected_path=$(cat "$tmpfile")
+    rm -f "$tmpfile"
     if [[ -n "$selected_path" ]] && [[ -d "$selected_path" ]]; then
       cd "$selected_path"
-    else
+    elif [[ -n "$selected_path" ]]; then
       echo "$selected_path"
     fi
   elif [[ "$1" == "cd" ]]; then
-    local selected_path=$(command prj "$@")
+    local tmpfile=$(mktemp)
+    command prj "$@" > "$tmpfile"
+    local selected_path=$(cat "$tmpfile")
+    rm -f "$tmpfile"
     if [[ -n "$selected_path" ]] && [[ -d "$selected_path" ]]; then
       cd "$selected_path"
-    else
+    elif [[ -n "$selected_path" ]]; then
       echo "$selected_path"
     fi
   else
