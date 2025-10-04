@@ -586,14 +586,15 @@ func runList(cmd *cobra.Command, args []string) {
 	}
 
 	prompt := promptui.Select{
-		Label: "Select Project",
-		Items: displayNames,
-		Size:  20,
+		Label:  "Select Project",
+		Items:  displayNames,
+		Size:   20,
+		Stdin:  os.Stdin,
+		Stdout: os.Stderr,
 	}
 
 	idx, _, err := prompt.Run()
 	if err != nil {
-		fmt.Printf("Selection cancelled\n")
 		return
 	}
 
