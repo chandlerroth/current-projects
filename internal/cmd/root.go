@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
 
@@ -21,14 +22,8 @@ var rootCmd = &cobra.Command{
 	Use:   "prj",
 	Short: "Project management tool",
 	Long:  `A CLI tool to manage and organize your git projects.`,
-	Args:  cobra.ArbitraryArgs,
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) == 1 {
-			if index, err := strconv.Atoi(args[0]); err == nil {
-				runCd(cmd, []string{strconv.Itoa(index)})
-				return
-			}
-		}
 		cmd.Help()
 	},
 }
@@ -573,6 +568,7 @@ func runList(cmd *cobra.Command, args []string) {
 	}
 
 	var displayNames []string
+	var repoPaths []string
 	for _, repo := range repos {
 		parts := strings.Split(repo, ":")
 		if len(parts) != 2 {
@@ -582,13 +578,24 @@ func runList(cmd *cobra.Command, args []string) {
 		if len(pathParts) != 2 {
 			continue
 		}
-		displayName := fmt.Sprintf("%s/%s",
-			strings.ToLower(pathParts[0]),
-			strings.ToLower(pathParts[1]))
+		username := strings.ToLower(pathParts[0])
+		repoName := strings.ToLower(pathParts[1])
+		displayName := fmt.Sprintf("%s/%s", username, repoName)
 		displayNames = append(displayNames, displayName)
+		repoPaths = append(repoPaths, filepath.Join(projectsDir, username, repoName))
 	}
 
-	for i, name := range displayNames {
-		fmt.Printf("%3d %s\n", i+1, name)
+	prompt := promptui.Select{
+		Label: "Select Project",
+		Items: displayNames,
+		Size:  20,
 	}
+
+	idx, _, err := prompt.Run()
+	if err != nil {
+		fmt.Printf("Selection cancelled\n")
+		return
+	}
+
+	fmt.Println(repoPaths[idx])
 }
