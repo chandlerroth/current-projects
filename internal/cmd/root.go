@@ -347,11 +347,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 	wg.Wait()
 	s.Stop()
 
-	count := 1
 	for _, status := range results {
 		if status != "" {
-			fmt.Printf("%3d %s\n", count, status)
-			count++
+			fmt.Println(status)
 		}
 	}
 
