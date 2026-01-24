@@ -1,6 +1,8 @@
 import { readRepos, readRepoUrls, removeRepoFromConfig } from "../lib/config.ts";
 import { getChangedFilesCount, getAheadBehind, getUpstream, getStashCount, isGitRepo } from "../lib/git.ts";
+import { PROJECTS_DIR } from "../lib/paths.ts";
 import { red, yellow, gray } from "../lib/colors.ts";
+import { join } from "path";
 
 export async function runDelete(arg: string | undefined): Promise<void> {
   if (!arg) {
@@ -65,22 +67,23 @@ export async function runDelete(arg: string | undefined): Promise<void> {
     }
   }
 
-  // If issues found, prompt for confirmation
+  // Show warnings if there are issues
   if (issues.length > 0) {
     console.log();
     console.log(yellow("Warning: This repository has unsaved work:"));
     for (const issue of issues) {
       console.log(`  - ${issue}`);
     }
-    console.log();
+  }
 
-    process.stdout.write("Are you sure you want to delete? This cannot be undone. [y/N]: ");
+  // Always prompt for confirmation
+  console.log();
+  process.stdout.write(`Remove ${repo.displayName}? [y/N]: `);
 
-    const confirmed = await waitForConfirmation();
-    if (!confirmed) {
-      console.log(gray("Cancelled."));
-      return;
-    }
+  const confirmed = await waitForConfirmation();
+  if (!confirmed) {
+    console.log(gray("Cancelled."));
+    return;
   }
 
   // Remove from config
@@ -92,7 +95,9 @@ export async function runDelete(arg: string | undefined): Promise<void> {
     await proc.exited;
   }
 
-  console.log(`Deleted ${repo.displayName}`);
+  // Output parent directory (org-level) for shell integration to cd into
+  const parentDir = join(PROJECTS_DIR, repo.username);
+  console.log(parentDir);
 }
 
 async function waitForConfirmation(): Promise<boolean> {
