@@ -39,7 +39,7 @@ export async function runDelete(arg: string | undefined): Promise<void> {
   const repo = repos[index - 1];
   const repoUrl = repoUrls[index - 1];
 
-  console.log(`Checking ${repo.displayName}...`);
+  console.error(`Checking ${repo.displayName}...`);
 
   // Check if directory exists and is a git repo
   const isRepo = await isGitRepo(repo.fullPath);
@@ -67,22 +67,22 @@ export async function runDelete(arg: string | undefined): Promise<void> {
     }
   }
 
-  // Show warnings if there are issues
+  // Show warnings if there are issues (to stderr so shell integration doesn't capture)
   if (issues.length > 0) {
-    console.log();
-    console.log(yellow("Warning: This repository has unsaved work:"));
+    console.error();
+    console.error(yellow("Warning: This repository has unsaved work:"));
     for (const issue of issues) {
-      console.log(`  - ${issue}`);
+      console.error(`  - ${issue}`);
     }
   }
 
-  // Always prompt for confirmation
-  console.log();
-  process.stdout.write(`Remove ${repo.displayName}? [y/N]: `);
+  // Always prompt for confirmation (to stderr)
+  console.error();
+  process.stderr.write(`Remove ${repo.displayName}? [y/N]: `);
 
   const confirmed = await waitForConfirmation();
   if (!confirmed) {
-    console.log(gray("Cancelled."));
+    console.error(gray("Cancelled."));
     return;
   }
 
@@ -95,7 +95,7 @@ export async function runDelete(arg: string | undefined): Promise<void> {
     await proc.exited;
   }
 
-  // Output parent directory (org-level) for shell integration to cd into
+  // Output parent directory (org-level) to stdout for shell integration to cd into
   const parentDir = join(PROJECTS_DIR, repo.username);
   console.log(parentDir);
 }

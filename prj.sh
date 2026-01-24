@@ -28,14 +28,8 @@ prj() {
       echo "$selected_path"
     fi
   elif [[ "$1" == "rm" ]]; then
-    local tmpfile=$(mktemp)
-    command prj "$@" > "$tmpfile"
-    local output=$(cat "$tmpfile")
-    rm -f "$tmpfile"
-    # Last line is the parent directory to cd into
-    local parent_dir=$(echo "$output" | tail -n 1)
-    # Print all but the last line
-    echo "$output" | head -n -1
+    # stdout has the parent dir path, stderr has the interactive prompts
+    local parent_dir=$(command prj "$@")
     if [[ -n "$parent_dir" ]] && [[ -d "$parent_dir" ]]; then
       cd "$parent_dir"
     fi
