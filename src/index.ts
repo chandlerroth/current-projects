@@ -4,6 +4,7 @@ import { runInstall } from "./commands/install.ts";
 import { runStatus } from "./commands/status.ts";
 import { runList } from "./commands/list.ts";
 import { runCd } from "./commands/cd.ts";
+import { runDelete } from "./commands/delete.ts";
 import { red } from "./lib/colors.ts";
 
 const HELP = `prj - Project Manager
@@ -17,6 +18,7 @@ Commands:
   status, s         Show git status for all repositories
   list, l           Interactive project selector
   cd <index>        Output project path by index (1-based)
+  rm <index>         Remove project by index (with safety checks)
   help              Show this help message
 
 Examples:
@@ -25,6 +27,7 @@ Examples:
   prj status
   prj list
   prj cd 1
+  prj rm 1
 `;
 
 async function main() {
@@ -64,6 +67,10 @@ async function main() {
 
       case "cd":
         await runCd(args[1]);
+        break;
+
+      case "rm":
+        await runDelete(args[1]);
         break;
 
       default:

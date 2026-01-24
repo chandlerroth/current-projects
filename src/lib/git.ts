@@ -153,3 +153,12 @@ export async function isGitRepo(path: string): Promise<boolean> {
   await proc.exited;
   return proc.exitCode === 0;
 }
+
+/**
+ * Get count of stashes
+ */
+export async function getStashCount(cwd: string): Promise<number> {
+  const { exitCode, stdout } = await executeGitWithOutput(["stash", "list"], cwd);
+  if (exitCode !== 0 || !stdout) return 0;
+  return stdout.split("\n").filter(Boolean).length;
+}

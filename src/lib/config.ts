@@ -90,3 +90,20 @@ export async function repoExistsInConfig(repoUrl: string): Promise<boolean> {
   const normalizedNew = repoUrl.toLowerCase().replace(/\.git$/, "");
   return urls.some((url) => url.toLowerCase().replace(/\.git$/, "") === normalizedNew);
 }
+
+/**
+ * Remove a repo URL from config file
+ */
+export async function removeRepoFromConfig(repoUrl: string): Promise<void> {
+  const content = await Bun.file(CONFIG_FILE).text();
+  const normalizedTarget = repoUrl.toLowerCase().replace(/\.git$/, "");
+
+  const lines = content.split("\n");
+  const filtered = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return true;
+    return trimmed.toLowerCase().replace(/\.git$/, "") !== normalizedTarget;
+  });
+
+  await Bun.write(CONFIG_FILE, filtered.join("\n"));
+}
