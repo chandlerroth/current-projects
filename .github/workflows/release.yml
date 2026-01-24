@@ -14,13 +14,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            target: darwin-arm64
+            target: bun-darwin-arm64
             artifact: prj-darwin-arm64
-          - os: macos-15-large
-            target: darwin-x64
+          - os: macos-latest
+            target: bun-darwin-x64
             artifact: prj-darwin-x64
           - os: ubuntu-latest
-            target: linux-x64
+            target: bun-linux-x64
             artifact: prj-linux-x64
 
     runs-on: ${{ matrix.os }}
@@ -37,7 +37,7 @@ jobs:
         run: bun install
 
       - name: Build binary
-        run: bun build src/index.ts --compile --outfile ${{ matrix.artifact }}
+        run: bun build src/index.ts --compile --target=${{ matrix.target }} --outfile ${{ matrix.artifact }}
 
       - name: Compress binary
         run: |
