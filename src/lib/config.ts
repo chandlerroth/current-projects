@@ -49,6 +49,9 @@ export async function createProjectsDir(): Promise<void> {
  * Read all repo URLs from config file
  */
 export async function readRepoUrls(): Promise<string[]> {
+  if (!(await configExists())) {
+    return [];
+  }
   const content = await Bun.file(CONFIG_FILE).text();
   return content
     .split("\n")
@@ -75,6 +78,12 @@ export async function readRepos(): Promise<RepoInfo[]> {
  * Add a repo URL to config file
  */
 export async function addRepoToConfig(repoUrl: string): Promise<void> {
+  if (!(await projectsDirExists())) {
+    await createProjectsDir();
+  }
+  if (!(await configExists())) {
+    await createConfig();
+  }
   const content = await Bun.file(CONFIG_FILE).text();
   const newContent = content.endsWith("\n")
     ? content + repoUrl + "\n"
