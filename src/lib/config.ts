@@ -2,9 +2,10 @@ import { CONFIG_FILE, PROJECTS_DIR, parseRepoUrl, type RepoInfo } from "./paths.
 
 const CONFIG_TEMPLATE = `# Current Projects Configuration
 # Add your git repository URLs below, one per line
-# Supports SSH (git@github.com:user/repo.git) and HTTPS formats
+# Supports shorthand (user/repo), SSH, and HTTPS formats
 #
 # Example:
+# username/repo
 # git@github.com:username/repo.git
 `;
 
