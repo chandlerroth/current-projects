@@ -1,4 +1,4 @@
-import { blue, colors } from "./colors.ts";
+import { blue, gray, colors } from "./colors.ts";
 
 interface SelectOption {
   label: string;
@@ -6,7 +6,7 @@ interface SelectOption {
 }
 
 /**
- * Interactive select prompt using raw stdin
+ * Interactive select prompt with type-to-filter
  * All UI output goes to stderr, result goes to stdout
  */
 export async function select(options: SelectOption[]): Promise<string | null> {
@@ -14,8 +14,12 @@ export async function select(options: SelectOption[]): Promise<string | null> {
     return null;
   }
 
+  let filter = "";
+  let filtered = [...options];
   let selectedIndex = 0;
   const maxVisible = Math.min(20, options.length);
+  // Reserve 1 extra line for the filter input
+  const totalLines = maxVisible + 1;
 
   // Enable raw mode
   if (process.stdin.isTTY) {
@@ -23,29 +27,50 @@ export async function select(options: SelectOption[]): Promise<string | null> {
   }
   process.stdin.resume();
 
+  const getFiltered = (): SelectOption[] => {
+    if (!filter) return [...options];
+    const lower = filter.toLowerCase();
+    return options.filter((opt) => opt.label.toLowerCase().includes(lower));
+  };
+
   const render = () => {
-    // Clear previous output
-    process.stderr.write(`\x1b[${maxVisible}A\x1b[J`);
+    // Move up and clear all lines
+    process.stderr.write(`\x1b[${totalLines}A\x1b[J`);
+
+    // Render filter line
+    if (filter) {
+      process.stderr.write(`  ${gray("filter:")} ${filter}\n`);
+    } else {
+      process.stderr.write(`  ${gray("type to filter...")}\n`);
+    }
 
     // Calculate scroll window
+    const visibleCount = Math.min(maxVisible, filtered.length);
     let startIndex = 0;
-    if (selectedIndex >= maxVisible) {
-      startIndex = selectedIndex - maxVisible + 1;
+    if (selectedIndex >= visibleCount) {
+      startIndex = selectedIndex - visibleCount + 1;
     }
-    const endIndex = Math.min(startIndex + maxVisible, options.length);
+    const endIndex = Math.min(startIndex + visibleCount, filtered.length);
 
     // Render visible options
     for (let i = startIndex; i < endIndex; i++) {
-      const opt = options[i];
+      const opt = filtered[i];
       const prefix = i === selectedIndex ? blue(">") : " ";
       const label = i === selectedIndex ? blue(opt.label) : opt.label;
-      const indexStr = `[${i + 1}]`.padEnd(5);
+      // Find original index for display number
+      const originalIndex = options.indexOf(opt);
+      const indexStr = `[${originalIndex + 1}]`.padEnd(5);
       process.stderr.write(`${prefix} ${indexStr} ${label}\n`);
+    }
+
+    // Fill remaining lines if filtered list is shorter
+    for (let i = endIndex - startIndex; i < maxVisible; i++) {
+      process.stderr.write("\n");
     }
   };
 
-  // Initial render (with blank lines first)
-  for (let i = 0; i < maxVisible; i++) {
+  // Initial render (blank lines first)
+  for (let i = 0; i < totalLines; i++) {
     process.stderr.write("\n");
   }
   render();
@@ -63,20 +88,45 @@ export async function select(options: SelectOption[]): Promise<string | null> {
 
       // Enter
       if (key === "\r" || key === "\n") {
-        cleanup();
-        resolve(options[selectedIndex].value);
+        if (filtered.length > 0) {
+          cleanup();
+          resolve(filtered[selectedIndex].value);
+        }
         return;
       }
 
-      // Arrow keys
-      if (key === "\x1b[A" || key === "k") {
-        // Up
+      // Arrow up or Ctrl+P
+      if (key === "\x1b[A" || key === "\x10") {
         selectedIndex = Math.max(0, selectedIndex - 1);
         render();
-      } else if (key === "\x1b[B" || key === "j") {
-        // Down
-        selectedIndex = Math.min(options.length - 1, selectedIndex + 1);
+        return;
+      }
+
+      // Arrow down or Ctrl+N
+      if (key === "\x1b[B" || key === "\x0e") {
+        selectedIndex = Math.min(filtered.length - 1, selectedIndex + 1);
         render();
+        return;
+      }
+
+      // Backspace
+      if (key === "\x7f" || key === "\b") {
+        if (filter.length > 0) {
+          filter = filter.slice(0, -1);
+          filtered = getFiltered();
+          selectedIndex = 0;
+          render();
+        }
+        return;
+      }
+
+      // Printable characters (filter input)
+      if (key.length === 1 && key >= " " && key <= "~") {
+        filter += key;
+        filtered = getFiltered();
+        selectedIndex = 0;
+        render();
+        return;
       }
     };
 
@@ -87,7 +137,7 @@ export async function select(options: SelectOption[]): Promise<string | null> {
       }
       process.stdin.pause();
       // Clear the menu
-      process.stderr.write(`\x1b[${maxVisible}A\x1b[J`);
+      process.stderr.write(`\x1b[${totalLines}A\x1b[J`);
     };
 
     process.stdin.on("data", onKeypress);
