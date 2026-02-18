@@ -5,6 +5,7 @@ import { runStatus } from "./commands/status.ts";
 import { runList } from "./commands/list.ts";
 import { runCd } from "./commands/cd.ts";
 import { runDelete } from "./commands/delete.ts";
+import { runCreate } from "./commands/create.ts";
 import { red } from "./lib/colors.ts";
 
 const HELP = `prj - Project Manager
@@ -14,6 +15,7 @@ Usage: prj <command> [args]
 Commands:
   init              Initialize ~/Projects directory and config file
   add, a <repo>     Add a repository to config and clone it
+  create, c <name>  Create a new private GitHub repo and clone it
   install, i        Clone all repositories from config
   status, s         Show git status for all repositories
   list, l           Interactive project selector
@@ -23,7 +25,8 @@ Commands:
 
 Examples:
   prj init
-  prj add git@github.com:user/repo.git
+  prj add user/repo
+  prj create my-app
   prj status
   prj list
   prj cd 1
@@ -71,6 +74,11 @@ async function main() {
 
       case "rm":
         await runDelete(args[1]);
+        break;
+
+      case "create":
+      case "c":
+        await runCreate(args[1]);
         break;
 
       default:
