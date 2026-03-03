@@ -24,6 +24,12 @@ export async function runCreate(repoName: string | undefined): Promise<void> {
     process.exit(1);
   }
 
+  if (repoName.startsWith("-")) {
+    console.error(red(`Invalid repo name: ${repoName}`));
+    console.error("Repo names cannot start with a dash.");
+    process.exit(1);
+  }
+
   // Determine owner and repo name
   let owner: string;
   let name: string;

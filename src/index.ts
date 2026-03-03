@@ -42,6 +42,12 @@ async function main() {
     return;
   }
 
+  // Handle --help/-h on any subcommand (e.g. `prj create --help`)
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(HELP);
+    return;
+  }
+
   try {
     switch (command) {
       case "init":
