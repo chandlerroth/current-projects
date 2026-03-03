@@ -2,19 +2,50 @@ import { scanProjects } from "../lib/config.ts";
 import { getChangedFilesCount, getAheadBehind, getUpstream, getStashCount, isGitRepo } from "../lib/git.ts";
 import { PROJECTS_DIR } from "../lib/paths.ts";
 import { red, yellow, gray } from "../lib/colors.ts";
+import { select } from "../lib/prompt.ts";
+import { Spinner } from "../lib/spinner.ts";
+import { getRepoStatus, formatStatusHint } from "../lib/status.ts";
 import { join } from "path";
 
-export async function runDelete(arg: string | undefined): Promise<void> {
-  if (!arg) {
-    console.error(red("Usage: prj rm <index|.>"));
-    process.exit(1);
-  }
-
+export async function runDelete(arg: string | undefined, nonInteractive = false): Promise<void> {
   const repos = scanProjects();
 
   let index: number;
 
-  if (arg === ".") {
+  if (!arg) {
+    if (nonInteractive) {
+      console.error(red("Usage: prj rm <index|.>"));
+      process.exit(1);
+    }
+
+    // Interactive picker
+    if (repos.length === 0) {
+      process.stderr.write(yellow("No projects found.\n"));
+      return;
+    }
+
+    const spinner = new Spinner("Checking repositories...");
+    spinner.start();
+
+    const statuses = await Promise.all(
+      repos.map((repo, i) => getRepoStatus(repo, i + 1))
+    );
+
+    spinner.stop();
+
+    const maxNameLen = Math.max(...repos.map((r) => r.displayName.length));
+
+    const options = repos.map((repo, i) => ({
+      label: repo.displayName.padEnd(maxNameLen),
+      value: repo.fullPath,
+      hint: formatStatusHint(statuses[i]),
+    }));
+
+    const selected = await select(options);
+    if (!selected) return;
+
+    index = repos.findIndex((r) => r.fullPath === selected) + 1;
+  } else if (arg === ".") {
     // Find index by current directory
     const cwd = process.cwd();
     index = repos.findIndex((r) => r.fullPath === cwd);
@@ -96,11 +127,15 @@ export async function runDelete(arg: string | undefined): Promise<void> {
 }
 
 async function waitForConfirmation(): Promise<boolean> {
-  const reader = Bun.stdin.stream().getReader();
-  const { value } = await reader.read();
-  reader.releaseLock();
+  process.stdin.resume();
 
-  if (!value) return false;
-  const input = new TextDecoder().decode(value).trim().toLowerCase();
-  return input === "y" || input === "yes";
+  return new Promise((resolve) => {
+    const onData = (data: Buffer) => {
+      process.stdin.removeListener("data", onData);
+      process.stdin.pause();
+      const input = data.toString().trim().toLowerCase();
+      resolve(input === "y" || input === "yes");
+    };
+    process.stdin.on("data", onData);
+  });
 }

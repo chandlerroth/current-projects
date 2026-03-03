@@ -1,8 +1,6 @@
 import { runInit } from "./commands/init.ts";
 import { runAdd } from "./commands/add.ts";
-import { runStatus } from "./commands/status.ts";
 import { runList } from "./commands/list.ts";
-import { runCd } from "./commands/cd.ts";
 import { runDelete } from "./commands/delete.ts";
 import { runCreate } from "./commands/create.ts";
 import { red } from "./lib/colors.ts";
@@ -12,22 +10,24 @@ const HELP = `prj - Project Manager
 Usage: prj <command> [args]
 
 Commands:
-  init              Initialize ~/Projects directory
-  add, a <repo>     Clone a repository into ~/Projects
-  create, c <name>  Create a new private GitHub repo and clone it
-  status, s         Show git status for all projects
-  list, l           Interactive project selector
-  cd <index>        Output project path by index (1-based)
-  rm <index>        Remove project by index (with safety checks)
-  help              Show this help message
+  init                Initialize ~/Projects directory
+  add, a [repo]       Clone a repository (interactive picker if no repo given)
+  create, c <name>    Create a new private GitHub repo and clone it
+  list, l             Interactive project selector
+  rm [index|.]        Remove a project (interactive picker if no index given)
+  help                Show this help message
+
+Flags:
+  --non-interactive   Disable interactive prompts (list prints status, rm requires index)
 
 Examples:
   prj init
   prj add user/repo
+  prj add
   prj create my-app
-  prj status
   prj list
-  prj cd 1
+  prj list --non-interactive
+  prj rm
   prj rm 1
 `;
 
@@ -46,6 +46,10 @@ async function main() {
     return;
   }
 
+  const nonInteractive = args.includes("--non-interactive");
+  // Strip flags from positional args
+  const positional = args.filter((a) => !a.startsWith("--"));
+
   try {
     switch (command) {
       case "init":
@@ -54,30 +58,21 @@ async function main() {
 
       case "add":
       case "a":
-        await runAdd(args[1]);
-        break;
-
-      case "status":
-      case "s":
-        await runStatus();
+        await runAdd(positional[1]);
         break;
 
       case "list":
       case "l":
-        await runList();
-        break;
-
-      case "cd":
-        await runCd(args[1]);
+        await runList(nonInteractive);
         break;
 
       case "rm":
-        await runDelete(args[1]);
+        await runDelete(positional[1], nonInteractive);
         break;
 
       case "create":
       case "c":
-        await runCreate(args[1]);
+        await runCreate(positional[1]);
         break;
 
       default:

@@ -17,7 +17,7 @@ prj() {
     elif [[ -n "$selected_path" ]]; then
       echo "$selected_path"
     fi
-  elif [[ "$1" == "cd" ]]; then
+  elif [[ "$1" == "add" ]] || [[ "$1" == "a" ]]; then
     local tmpfile=$(mktemp)
     command prj "$@" > "$tmpfile"
     local selected_path=$(cat "$tmpfile")
