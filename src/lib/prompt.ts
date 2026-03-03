@@ -47,7 +47,7 @@ export async function select(options: SelectOption[]): Promise<string | null> {
     // Calculate scroll window
     const visibleCount = Math.min(maxVisible, filtered.length);
     let startIndex = 0;
-    if (selectedIndex >= visibleCount) {
+    if (visibleCount > 0 && selectedIndex >= visibleCount) {
       startIndex = selectedIndex - visibleCount + 1;
     }
     const endIndex = Math.min(startIndex + visibleCount, filtered.length);
