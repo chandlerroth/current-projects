@@ -27,6 +27,16 @@ prj() {
     elif [[ -n "$selected_path" ]]; then
       echo "$selected_path"
     fi
+  elif [[ "$1" == "create" ]] || [[ "$1" == "c" ]]; then
+    local tmpfile=$(mktemp)
+    command prj "$@" > "$tmpfile"
+    local selected_path=$(cat "$tmpfile")
+    rm -f "$tmpfile"
+    if [[ -n "$selected_path" ]] && [[ -d "$selected_path" ]]; then
+      cd "$selected_path"
+    elif [[ -n "$selected_path" ]]; then
+      echo "$selected_path"
+    fi
   elif [[ "$1" == "rm" ]]; then
     # stdout has the parent dir path, stderr has the interactive prompts
     local parent_dir=$(command prj "$@")

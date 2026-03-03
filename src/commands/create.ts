@@ -1,7 +1,8 @@
-import { PROJECTS_DIR } from "../lib/paths.ts";
-import { cloneRepo, isGitRepo } from "../lib/git.ts";
-import { green, red } from "../lib/colors.ts";
-import { join } from "path";
+import { PROJECTS_DIR, parseRepoUrl } from "../lib/paths.ts";
+import { cloneRepo, isGitRepo, executeGitWithOutput, executeGit } from "../lib/git.ts";
+import { green, red, yellow } from "../lib/colors.ts";
+import { join, basename } from "path";
+import { mkdirSync, renameSync } from "fs";
 
 async function getGitHubUsername(): Promise<string | null> {
   const proc = Bun.spawn(["gh", "api", "user", "--jq", ".login"], {
@@ -14,13 +15,85 @@ async function getGitHubUsername(): Promise<string | null> {
   return stdout.trim();
 }
 
+async function runCreateFromCwd(): Promise<void> {
+  const cwd = process.cwd();
+
+  if (!(await isGitRepo(cwd))) {
+    console.error(red("Current directory is not a git repo."));
+    process.exit(1);
+  }
+
+  const username = await getGitHubUsername();
+  if (!username) {
+    console.error(red("Failed to get GitHub username. Is `gh` authenticated?"));
+    console.error("Run: gh auth login");
+    process.exit(1);
+  }
+
+  const name = basename(cwd);
+  const fullName = `${username}/${name}`;
+
+  // Check if remote already exists
+  const { stdout: remoteUrl } = await executeGitWithOutput(["remote", "get-url", "origin"], cwd);
+  if (remoteUrl) {
+    console.error(yellow(`Remote 'origin' already set to: ${remoteUrl}`));
+    console.error(red("Use a fresh repo without an origin remote, or remove it first."));
+    process.exit(1);
+  }
+
+  // Create the repo on GitHub
+  console.error(`Creating private repo ${fullName}...`);
+  const createProc = Bun.spawn(
+    ["gh", "repo", "create", fullName, "--private"],
+    { stdout: "inherit", stderr: "inherit" }
+  );
+  await createProc.exited;
+
+  if (createProc.exitCode !== 0) {
+    console.error(red(`Failed to create repository ${fullName}`));
+    process.exit(1);
+  }
+
+  // Add remote origin
+  const sshUrl = `git@github.com:${fullName}.git`;
+  const { exitCode: addRemoteExit } = await executeGit(["remote", "add", "origin", sshUrl], cwd);
+  if (addRemoteExit !== 0) {
+    console.error(red("Failed to add remote origin."));
+    process.exit(1);
+  }
+
+  // Push current branch
+  const { stdout: branch } = await executeGitWithOutput(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+  if (branch) {
+    console.error(`Pushing ${branch} to origin...`);
+    await executeGit(["push", "-u", "origin", branch], cwd);
+  }
+
+  // Move repo into ~/Projects/<owner>/<name> if not already there
+  const targetPath = join(PROJECTS_DIR, username.toLowerCase(), name.toLowerCase());
+  if (cwd !== targetPath) {
+    mkdirSync(join(PROJECTS_DIR, username.toLowerCase()), { recursive: true });
+    renameSync(cwd, targetPath);
+    console.error(green(`Moved to ${targetPath}`));
+    console.log(targetPath);
+  } else {
+    console.error(green(`Created repo ${fullName}`));
+    console.log(targetPath);
+  }
+}
+
 export async function runCreate(repoName: string | undefined): Promise<void> {
   if (!repoName) {
     console.error(red("Usage: prj create <repo-name>"));
     console.error("Examples:");
     console.error("  prj create my-app");
     console.error("  prj create myorg/my-app");
+    console.error("  prj create .          (publish current dir as a private repo)");
     process.exit(1);
+  }
+
+  if (repoName === ".") {
+    return runCreateFromCwd();
   }
 
   if (repoName.startsWith("-")) {
@@ -57,7 +130,7 @@ export async function runCreate(repoName: string | undefined): Promise<void> {
   }
 
   // Create the repo on GitHub (no clone yet)
-  console.log(`Creating private repo ${fullName}...`);
+  console.error(`Creating private repo ${fullName}...`);
   const createProc = Bun.spawn(
     ["gh", "repo", "create", fullName, "--private"],
     {
@@ -83,12 +156,13 @@ export async function runCreate(repoName: string | undefined): Promise<void> {
   const cloneUrl = sshUrl || `git@github.com:${fullName}.git`;
 
   // Clone to the correct path
-  console.log(`Cloning ${fullName}...`);
+  console.error(`Cloning ${fullName}...`);
   const success = await cloneRepo(cloneUrl, localPath);
   if (!success) {
     console.error(red(`Failed to clone ${fullName}`));
     process.exit(1);
   }
 
-  console.log(green(`Created and cloned ${fullName} to ${localPath}`));
+  console.error(green(`Created and cloned ${fullName} to ${localPath}`));
+  console.log(localPath);
 }
