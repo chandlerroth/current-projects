@@ -3,6 +3,7 @@ import { blue, gray, colors } from "./colors.ts";
 interface SelectOption {
   label: string;
   value: string;
+  hint?: string;
 }
 
 /**
@@ -60,7 +61,8 @@ export async function select(options: SelectOption[]): Promise<string | null> {
       // Find original index for display number
       const originalIndex = options.indexOf(opt);
       const indexStr = `[${originalIndex + 1}]`.padEnd(5);
-      process.stderr.write(`${prefix} ${indexStr} ${label}\n`);
+      const hint = opt.hint ? ` ${opt.hint}` : "";
+      process.stderr.write(`${prefix} ${indexStr} ${label}${hint}\n`);
     }
 
     // Fill remaining lines if filtered list is shorter

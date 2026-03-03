@@ -1,72 +1,7 @@
 import { scanProjects } from "../lib/config.ts";
-import { type RepoInfo } from "../lib/paths.ts";
-import {
-  fetch,
-  getCurrentBranch,
-  getUpstream,
-  getAheadBehind,
-  getChangedFilesCount,
-  isGitRepo,
-  branchExists,
-} from "../lib/git.ts";
 import { blue, green, red, yellow, gray } from "../lib/colors.ts";
 import { Spinner } from "../lib/spinner.ts";
-
-interface RepoStatus {
-  index: number;
-  displayName: string;
-  branch: string | null;
-  ahead: number;
-  behind: number;
-  changes: number;
-  installed: boolean;
-}
-
-async function getRepoStatus(repo: RepoInfo, index: number): Promise<RepoStatus> {
-  const status: RepoStatus = {
-    index,
-    displayName: repo.displayName,
-    branch: null,
-    ahead: 0,
-    behind: 0,
-    changes: 0,
-    installed: false,
-  };
-
-  if (!(await isGitRepo(repo.fullPath))) {
-    return status;
-  }
-
-  status.installed = true;
-
-  // Fetch in background (don't wait)
-  fetch(repo.fullPath);
-
-  // Get current branch
-  status.branch = await getCurrentBranch(repo.fullPath);
-
-  // Get upstream or compare against main/master
-  let compareBranch = await getUpstream(repo.fullPath);
-  if (!compareBranch) {
-    // Try origin/main or origin/master
-    if (await branchExists(repo.fullPath, "origin/main")) {
-      compareBranch = "origin/main";
-    } else if (await branchExists(repo.fullPath, "origin/master")) {
-      compareBranch = "origin/master";
-    }
-  }
-
-  if (compareBranch) {
-    const { ahead, behind } = await getAheadBehind(repo.fullPath, compareBranch);
-    status.ahead = ahead;
-    status.behind = behind;
-  }
-
-  // Get changed files count
-  status.changes = await getChangedFilesCount(repo.fullPath);
-
-  return status;
-}
+import { getRepoStatus, type RepoStatus } from "../lib/status.ts";
 
 function formatStatus(status: RepoStatus, maxNameLen: number, maxBranchLen: number): string {
   const indexStr = `[${status.index}]`.padEnd(5);
