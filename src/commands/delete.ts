@@ -1,4 +1,4 @@
-import { readRepos, readRepoUrls, removeRepoFromConfig } from "../lib/config.ts";
+import { scanProjects } from "../lib/config.ts";
 import { getChangedFilesCount, getAheadBehind, getUpstream, getStashCount, isGitRepo } from "../lib/git.ts";
 import { PROJECTS_DIR } from "../lib/paths.ts";
 import { red, yellow, gray } from "../lib/colors.ts";
@@ -10,8 +10,7 @@ export async function runDelete(arg: string | undefined): Promise<void> {
     process.exit(1);
   }
 
-  const repos = await readRepos();
-  const repoUrls = await readRepoUrls();
+  const repos = scanProjects();
 
   let index: number;
 
@@ -37,7 +36,6 @@ export async function runDelete(arg: string | undefined): Promise<void> {
   }
 
   const repo = repos[index - 1];
-  const repoUrl = repoUrls[index - 1];
 
   console.error(`Checking ${repo.displayName}...`);
 
@@ -85,9 +83,6 @@ export async function runDelete(arg: string | undefined): Promise<void> {
     console.error(gray("Cancelled."));
     return;
   }
-
-  // Remove from config
-  await removeRepoFromConfig(repoUrl);
 
   // Delete directory if it exists
   if (isRepo) {

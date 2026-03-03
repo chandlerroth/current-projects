@@ -2,7 +2,6 @@ import { homedir } from "os";
 import { join } from "path";
 
 export const PROJECTS_DIR = join(homedir(), "Projects");
-export const CONFIG_FILE = join(PROJECTS_DIR, ".current-projects");
 
 export interface RepoInfo {
   username: string;

@@ -1,5 +1,5 @@
-import { readRepos } from "../lib/config.ts";
-import { PROJECTS_DIR, type RepoInfo } from "../lib/paths.ts";
+import { scanProjects } from "../lib/config.ts";
+import { type RepoInfo } from "../lib/paths.ts";
 import {
   fetch,
   getCurrentBranch,
@@ -98,10 +98,10 @@ function formatStatus(status: RepoStatus, maxNameLen: number, maxBranchLen: numb
 }
 
 export async function runStatus(): Promise<void> {
-  const repos = await readRepos();
+  const repos = scanProjects();
 
   if (repos.length === 0) {
-    console.log(yellow("No repositories configured. Run 'prj add <repo>' to add one."));
+    console.log(yellow("No projects found. Run 'prj add <repo>' to add one."));
     return;
   }
 
@@ -124,36 +124,5 @@ export async function runStatus(): Promise<void> {
   // Print all statuses
   for (const status of statuses) {
     console.log(formatStatus(status, maxNameLen, maxBranchLen));
-  }
-
-  // Check for unexpected directories
-  await checkUnexpectedDirectories(repos);
-}
-
-async function checkUnexpectedDirectories(repos: RepoInfo[]): Promise<void> {
-  const expectedPaths = new Set(repos.map((r) => r.fullPath));
-
-  try {
-    const proc = Bun.spawn(["find", PROJECTS_DIR, "-mindepth", "2", "-maxdepth", "2", "-type", "d"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-
-    const output = await new Response(proc.stdout).text();
-    await proc.exited;
-
-    const directories = output.trim().split("\n").filter(Boolean);
-    const unexpected = directories.filter((dir) => !expectedPaths.has(dir));
-
-    if (unexpected.length > 0) {
-      console.log();
-      console.log(yellow("Unexpected directories (not in config):"));
-      for (const dir of unexpected) {
-        const relativePath = dir.replace(PROJECTS_DIR + "/", "");
-        console.log(gray(`  ${relativePath}`));
-      }
-    }
-  } catch {
-    // Silently ignore errors when checking for unexpected directories
   }
 }

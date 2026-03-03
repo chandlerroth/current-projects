@@ -1,4 +1,4 @@
-import { readRepos } from "../lib/config.ts";
+import { scanProjects } from "../lib/config.ts";
 import { red } from "../lib/colors.ts";
 
 export async function runCd(indexStr: string | undefined): Promise<void> {
@@ -13,7 +13,7 @@ export async function runCd(indexStr: string | undefined): Promise<void> {
     process.exit(1);
   }
 
-  const repos = await readRepos();
+  const repos = scanProjects();
   if (index > repos.length) {
     console.error(red(`Index out of range. You have ${repos.length} projects.`));
     process.exit(1);

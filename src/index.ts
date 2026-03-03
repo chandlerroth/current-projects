@@ -1,6 +1,5 @@
 import { runInit } from "./commands/init.ts";
 import { runAdd } from "./commands/add.ts";
-import { runInstall } from "./commands/install.ts";
 import { runStatus } from "./commands/status.ts";
 import { runList } from "./commands/list.ts";
 import { runCd } from "./commands/cd.ts";
@@ -13,14 +12,13 @@ const HELP = `prj - Project Manager
 Usage: prj <command> [args]
 
 Commands:
-  init              Initialize ~/Projects directory and config file
-  add, a <repo>     Add a repository to config and clone it
+  init              Initialize ~/Projects directory
+  add, a <repo>     Clone a repository into ~/Projects
   create, c <name>  Create a new private GitHub repo and clone it
-  install, i        Clone all repositories from config
-  status, s         Show git status for all repositories
+  status, s         Show git status for all projects
   list, l           Interactive project selector
   cd <index>        Output project path by index (1-based)
-  rm <index>         Remove project by index (with safety checks)
+  rm <index>        Remove project by index (with safety checks)
   help              Show this help message
 
 Examples:
@@ -57,11 +55,6 @@ async function main() {
       case "add":
       case "a":
         await runAdd(args[1]);
-        break;
-
-      case "install":
-      case "i":
-        await runInstall();
         break;
 
       case "status":
