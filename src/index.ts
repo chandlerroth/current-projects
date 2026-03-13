@@ -3,6 +3,7 @@ import { runAdd } from "./commands/add.ts";
 import { runList } from "./commands/list.ts";
 import { runDelete } from "./commands/delete.ts";
 import { runCreate } from "./commands/create.ts";
+import { runSearch } from "./commands/search.ts";
 import { red } from "./lib/colors.ts";
 
 const HELP = `prj - Project Manager
@@ -14,6 +15,7 @@ Commands:
   add, a [repo]       Clone a repository (interactive picker if no repo given)
   create, c <name>    Create a new private GitHub repo and clone it
   list, l             Interactive project selector
+  search, s [query]   Search GitHub repos (interactive picker if no query)
   rm [index|.]        Remove a project (interactive picker if no index given)
   help                Show this help message
 
@@ -27,6 +29,9 @@ Examples:
   prj create my-app
   prj list
   prj list --non-interactive
+  prj search
+  prj search prj
+  prj search --non-interactive
   prj rm
   prj rm 1
 `;
@@ -68,6 +73,11 @@ async function main() {
 
       case "rm":
         await runDelete(positional[1], nonInteractive);
+        break;
+
+      case "search":
+      case "s":
+        await runSearch(positional[1], nonInteractive);
         break;
 
       case "create":
