@@ -115,11 +115,9 @@ export async function runDelete(arg: string | undefined, nonInteractive = false)
     return;
   }
 
-  // Delete directory if it exists
-  if (isRepo) {
-    const proc = Bun.spawn(["rm", "-rf", repo.fullPath]);
-    await proc.exited;
-  }
+  // Delete directory
+  const proc = Bun.spawn(["rm", "-rf", repo.fullPath]);
+  await proc.exited;
 
   // Output parent directory (org-level) to stdout for shell integration to cd into
   const parentDir = join(PROJECTS_DIR, repo.username);
