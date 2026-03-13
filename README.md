@@ -15,19 +15,19 @@ brew install prj
 
 ### Manual Installation
 
-Download the latest release from [GitHub Releases](https://github.com/chandlerroth/current-projects/releases) and extract to your PATH:
+Download the latest release from [GitHub Releases](https://github.com/chandlerroth/prj/releases):
 
 ```bash
 # macOS Apple Silicon
-curl -L https://github.com/chandlerroth/current-projects/releases/latest/download/prj-darwin-arm64.tar.gz | tar xz
+curl -L https://github.com/chandlerroth/prj/releases/latest/download/prj-darwin-arm64.tar.gz | tar xz
 sudo mv prj-darwin-arm64 /usr/local/bin/prj
 
 # macOS Intel
-curl -L https://github.com/chandlerroth/current-projects/releases/latest/download/prj-darwin-x64.tar.gz | tar xz
+curl -L https://github.com/chandlerroth/prj/releases/latest/download/prj-darwin-x64.tar.gz | tar xz
 sudo mv prj-darwin-x64 /usr/local/bin/prj
 
 # Linux x64
-curl -L https://github.com/chandlerroth/current-projects/releases/latest/download/prj-linux-x64.tar.gz | tar xz
+curl -L https://github.com/chandlerroth/prj/releases/latest/download/prj-linux-x64.tar.gz | tar xz
 sudo mv prj-linux-x64 /usr/local/bin/prj
 ```
 
@@ -36,8 +36,8 @@ sudo mv prj-linux-x64 /usr/local/bin/prj
 Requires [Bun](https://bun.sh):
 
 ```bash
-git clone https://github.com/chandlerroth/current-projects.git
-cd current-projects
+git clone https://github.com/chandlerroth/prj.git
+cd prj
 bun install
 bun build src/index.ts --compile --outfile prj
 sudo mv prj /usr/local/bin/
@@ -45,90 +45,89 @@ sudo mv prj /usr/local/bin/
 
 ## Shell Integration
 
-For `prj list` and `prj cd` to change your shell's working directory, add this to your `~/.zshrc` or `~/.bashrc`:
+For `prj list` and `prj rm` to change your shell's working directory, add this to your `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-source /path/to/prj.sh
-```
-
-Or download directly:
-
-```bash
-curl -o ~/.prj.sh https://raw.githubusercontent.com/chandlerroth/current-projects/main/prj.sh
+curl -o ~/.prj.sh https://raw.githubusercontent.com/chandlerroth/prj/main/prj.sh
 echo 'source ~/.prj.sh' >> ~/.zshrc
 ```
 
 ## Quick Start
 
-1. Initialize your projects directory:
 ```bash
+# Initialize your projects directory
 prj init
-```
-This creates a `~/Projects` directory and a `.current-projects` config file.
 
-2. Add new repos (with auto cloning):
-```bash
-prj add git@github.com:username/repo.git
+# Clone a repo (interactive picker if no repo given)
+prj add user/repo
+prj add
+
+# Create a new private GitHub repo and clone it
+prj create my-app
+
+# Publish current directory as a private GitHub repo
+prj create .
+
+# Interactive project selector (changes directory on selection)
+prj list
+
+# Remove a project
+prj rm      # interactive picker
+prj rm 3    # by index
+prj rm .    # current directory
 ```
 
-3. Check git status of all projects:
-```bash
-prj status
-```
-
-4. Jump to a project:
-```bash
-prj list    # Interactive selection
-prj cd 1    # Jump to project #1
-```
-
-## Available Commands
+## Commands
 
 | Command | Alias | Description |
 |---------|-------|-------------|
-| `prj init` | - | Initialize ~/Projects directory and config |
-| `prj add <repo>` | `a` | Add a repository and clone it |
-| `prj install` | `i` | Clone all repositories from config |
-| `prj status` | `s` | Show git status for all projects |
+| `prj init` | - | Initialize `~/Projects` directory |
+| `prj add [repo]` | `a` | Clone a repository (interactive picker if no repo given) |
+| `prj create <name>` | `c` | Create a new private GitHub repo and clone it |
+| `prj create .` | - | Publish current directory as a private GitHub repo |
 | `prj list` | `l` | Interactive project selector |
-| `prj cd <index>` | - | Output project path by index |
+| `prj rm [index\|.]` | - | Remove a project (interactive picker if no index given) |
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--non-interactive` | Disable interactive prompts (`list` prints status, `rm` requires index) |
 
 ## Status Indicators
 
-When running `prj status`, you'll see various indicators:
-
-- `[↓]` - Commits behind remote
-- `[↑]` - Commits ahead of remote
-- `[N changes]` - Modified files
-- `[✓ clean]` - Repository is clean
-
-Example output:
 ```
-[1]  chandlerroth/current-projects  git:(main) [✓ clean]
-[2]  chandlerroth/other-project     git:(main) [2↑ 3 changes]
+[1]  chandlerroth/prj          git:(main) [✓ clean]
+[2]  chandlerroth/other-repo   git:(main) [2↑ 3 changes]
+[3]  org/some-project          git:(main) [1↓]
 ```
+
+- `✓ clean` — No uncommitted changes, up to date with remote
+- `N↑` — Commits ahead of remote
+- `N↓` — Commits behind remote
+- `N changes` — Uncommitted changes
+- `Not installed` — Directory exists but is not a git repo
 
 ## Project Structure
 
-Projects are organized in the following structure:
+Projects are organized under `~/Projects/<org>/<repo>`:
 
 ```
 ~/Projects/
-├── .current-projects    # Config file with repo URLs
-├── username1/
+├── username/
 │   ├── repo1/
 │   └── repo2/
-└── username2/
+└── org/
     └── repo3/
 ```
 
-The `.current-projects` file maintains the list of repositories to track. You can sync this to a gist or back it up however you like.
+No config file — the filesystem is the source of truth.
 
 ## Development
 
 ```bash
 # Run in development
-bun run src/index.ts status
+bun run src/index.ts list
 
 # Build binary
 bun build src/index.ts --compile --outfile prj

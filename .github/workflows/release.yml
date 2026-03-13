@@ -64,3 +64,84 @@ jobs:
         with:
           files: artifacts/**/*.tar.gz
           generate_release_notes: true
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Compute SHA256 hashes
+        id: sha
+        run: |
+          echo "darwin_arm64=$(sha256sum artifacts/prj-darwin-arm64/prj-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "darwin_x64=$(sha256sum artifacts/prj-darwin-x64/prj-darwin-x64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "linux_x64=$(sha256sum artifacts/prj-linux-x64/prj-linux-x64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/chandlerroth/homebrew-tap.git
+          cd homebrew-tap
+
+          cat > Formula/prj.rb << 'FORMULA'
+          class Prj < Formula
+            desc "CLI tool to manage and organize git projects"
+            homepage "https://github.com/chandlerroth/prj"
+            version "VERSION_PLACEHOLDER"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/chandlerroth/prj/releases/download/v#{version}/prj-darwin-arm64.tar.gz"
+                sha256 "SHA_DARWIN_ARM64"
+
+                def install
+                  bin.install "prj-darwin-arm64" => "prj"
+                end
+              end
+
+              on_intel do
+                url "https://github.com/chandlerroth/prj/releases/download/v#{version}/prj-darwin-x64.tar.gz"
+                sha256 "SHA_DARWIN_X64"
+
+                def install
+                  bin.install "prj-darwin-x64" => "prj"
+                end
+              end
+            end
+
+            on_linux do
+              url "https://github.com/chandlerroth/prj/releases/download/v#{version}/prj-linux-x64.tar.gz"
+              sha256 "SHA_LINUX_X64"
+
+              def install
+                bin.install "prj-linux-x64" => "prj"
+              end
+            end
+
+            test do
+              system "#{bin}/prj", "help"
+            end
+          end
+          FORMULA
+
+          sed -i "s/VERSION_PLACEHOLDER/${{ steps.version.outputs.version }}/" Formula/prj.rb
+          sed -i "s/SHA_DARWIN_ARM64/${{ steps.sha.outputs.darwin_arm64 }}/" Formula/prj.rb
+          sed -i "s/SHA_DARWIN_X64/${{ steps.sha.outputs.darwin_x64 }}/" Formula/prj.rb
+          sed -i "s/SHA_LINUX_X64/${{ steps.sha.outputs.linux_x64 }}/" Formula/prj.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/prj.rb
+          git commit -m "Update prj to ${{ steps.version.outputs.version }}"
+          git push
