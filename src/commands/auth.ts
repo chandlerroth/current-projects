@@ -1,4 +1,4 @@
-import { readConfig, writeConfig, CONFIG_PATH } from "../lib/user-config.ts";
+import { readConfig, writeConfig, configPath } from "../lib/user-config.ts";
 import { green, red, gray, yellow } from "../lib/colors.ts";
 import { _resetTokenCache, getCurrentUser } from "../lib/gh-api.ts";
 import { select } from "../lib/prompt.ts";
@@ -71,18 +71,31 @@ async function promptText(label: string, opts: { mask?: boolean } = {}): Promise
 }
 
 async function saveAndVerify(token: string): Promise<void> {
+  // Verify FIRST so a bad token can't clobber a good saved one. We swap the
+  // env var (highest-priority source) for the verification call, then restore.
+  const prevEnv = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = token;
+  _resetTokenCache();
+  let user: string;
+  try {
+    user = await getCurrentUser();
+  } catch (e) {
+    if (prevEnv === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = prevEnv;
+    _resetTokenCache();
+    console.error(red(e instanceof Error ? e.message : "Token verification failed"));
+    console.error(yellow("Existing token (if any) was left untouched."));
+    process.exit(1);
+  }
+  // Restore env, then persist to config.
+  if (prevEnv === undefined) delete process.env.GITHUB_TOKEN;
+  else process.env.GITHUB_TOKEN = prevEnv;
   const cfg = readConfig();
   cfg.githubToken = token;
   writeConfig(cfg);
   _resetTokenCache();
-  try {
-    const user = await getCurrentUser();
-    console.error(green(`Authenticated as ${user}`));
-    console.error(gray(`Token saved to ${CONFIG_PATH}`));
-  } catch (e) {
-    console.error(red(e instanceof Error ? e.message : "Token verification failed"));
-    process.exit(1);
-  }
+  console.error(green(`Authenticated as ${user}`));
+  console.error(gray(`Token saved to ${configPath()}`));
 }
 
 /**
@@ -136,6 +149,11 @@ export async function runAuth(sub: string | undefined, token: string | undefined
   let action: "status" | "login" | "logout";
   let tok: string | undefined;
 
+  // Reserved subcommands. Anything else is treated as a shorthand token, but
+  // only if it actually looks like one (so typos like `prj auth help` don't
+  // silently get persisted as the token).
+  const RESERVED = new Set(["help", "status", "login", "logout"]);
+
   if (!sub) {
     action = "status";
   } else if (sub === "logout") {
@@ -145,6 +163,21 @@ export async function runAuth(sub: string | undefined, token: string | undefined
   } else if (sub === "login") {
     action = "login";
     tok = token;
+  } else if (sub === "help") {
+    console.error("prj auth — Manage your GitHub token");
+    console.error("");
+    console.error("Usage:");
+    console.error("  prj auth                Show current auth status");
+    console.error("  prj auth login          Interactive login (gh import or paste)");
+    console.error("  prj auth login <token>  Save a token");
+    console.error("  prj auth <token>        Same as `auth login <token>`");
+    console.error("  prj auth logout         Remove the saved token");
+    return;
+  } else if (RESERVED.has(sub) || !/^(gh[pous]_|github_pat_)[A-Za-z0-9_]{20,}$/.test(sub)) {
+    // Doesn't look like a GitHub token — refuse before we touch anything.
+    console.error(red(`Unknown subcommand: ${sub}`));
+    console.error("Run 'prj auth help' for usage.");
+    process.exit(1);
   } else {
     // shorthand: `prj auth ghp_xxx`
     action = "login";
@@ -172,7 +205,7 @@ export async function runAuth(sub: string | undefined, token: string | undefined
   // status
   const cfg = readConfig();
   if (cfg.githubToken) {
-    console.error(`Token: ${mask(cfg.githubToken)} ${gray(`(${CONFIG_PATH})`)}`);
+    console.error(`Token: ${mask(cfg.githubToken)} ${gray(`(${configPath()})`)}`);
     try {
       const user = await getCurrentUser();
       console.error(green(`Authenticated as ${user}`));
