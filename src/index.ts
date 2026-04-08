@@ -5,6 +5,7 @@ import { runDelete } from "./commands/delete.ts";
 import { runCreate } from "./commands/create.ts";
 import { runSearch } from "./commands/search.ts";
 import { runAuth } from "./commands/auth.ts";
+import { runShellInit } from "./commands/shell-init.ts";
 import { red } from "./lib/colors.ts";
 
 const HELP = `prj - Project Manager
@@ -19,6 +20,7 @@ Commands:
   search, s [query]   Search GitHub repos (interactive picker if no query)
   rm [index|.]        Remove a project (interactive picker if no index given)
   auth [token]        Save a GitHub token (or check status / logout)
+  shell-init          Print shell function for auto-cd (eval in your rc file)
   help                Show this help message
 
 Flags:
@@ -50,6 +52,7 @@ const COMMAND_HELP: Record<string, string> = {
   search: `prj search — Search GitHub repos\n\nUsage:\n  prj search [query]\n  prj search [query] --non-interactive   Emit JSON results\n`,
   rm: `prj rm — Remove a project\n\nUsage:\n  prj rm                 Interactive picker\n  prj rm <index>         Remove by 1-based index\n  prj rm .               Remove the current directory's project\n  prj rm <index> --force Skip safety checks\n`,
   auth: `prj auth — Manage your GitHub token\n\nUsage:\n  prj auth               Show current auth status\n  prj auth <token>       Save a token to ~/.config/prj/config.json\n  prj auth login <token> Same as above\n  prj auth logout        Remove the saved token\n  prj auth status        Show current auth status\n\nCreate a token at https://github.com/settings/tokens (scope: repo)\n`,
+  "shell-init": `prj shell-init — Print shell wrapper for auto-cd\n\nUsage:\n  Add this to ~/.zshrc or ~/.bashrc:\n    eval "$(prj shell-init)"\n\nThe wrapper auto-cd's into any directory path printed by prj (e.g.\nfrom 'prj list', 'prj add', 'prj create', 'prj rm').\n`,
 };
 
 const ALIASES: Record<string, string> = { a: "add", c: "create", l: "list", s: "search" };
@@ -88,7 +91,8 @@ async function main() {
   // Strip flags from positional args
   const positional = args.filter((a) => !a.startsWith("--"));
 
-  await preflightGit();
+  // shell-init just prints text; no git needed (and runs on every shell start).
+  if (canonical !== "shell-init") await preflightGit();
 
   try {
     switch (canonical) {
@@ -118,6 +122,10 @@ async function main() {
 
       case "auth":
         await runAuth(positional[1], positional[2]);
+        break;
+
+      case "shell-init":
+        await runShellInit();
         break;
 
       default:
