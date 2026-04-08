@@ -1,19 +1,10 @@
-import { PROJECTS_DIR, parseRepoUrl } from "../lib/paths.ts";
+import { PROJECTS_DIR } from "../lib/paths.ts";
 import { cloneRepo, isGitRepo, executeGitWithOutput, executeGit } from "../lib/git.ts";
 import { green, red, yellow } from "../lib/colors.ts";
 import { join, basename } from "path";
 import { mkdirSync, renameSync } from "fs";
-
-async function getGitHubUsername(): Promise<string | null> {
-  const proc = Bun.spawn(["gh", "api", "user", "--jq", ".login"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const stdout = await new Response(proc.stdout).text();
-  await proc.exited;
-  if (proc.exitCode !== 0) return null;
-  return stdout.trim();
-}
+import { createRepo, getCurrentUser } from "../lib/gh-api.ts";
+import { Spinner } from "../lib/spinner.ts";
 
 async function runCreateFromCwd(): Promise<void> {
   const cwd = process.cwd();
@@ -23,10 +14,11 @@ async function runCreateFromCwd(): Promise<void> {
     process.exit(1);
   }
 
-  const username = await getGitHubUsername();
-  if (!username) {
-    console.error(red("Failed to get GitHub username. Is `gh` authenticated?"));
-    console.error("Run: gh auth login");
+  let username: string;
+  try {
+    username = await getCurrentUser();
+  } catch (e) {
+    console.error(red(e instanceof Error ? e.message : "Failed to get GitHub user."));
     process.exit(1);
   }
 
@@ -41,22 +33,20 @@ async function runCreateFromCwd(): Promise<void> {
     process.exit(1);
   }
 
-  // Create the repo on GitHub
-  console.error(`Creating private repo ${fullName}...`);
-  const createProc = Bun.spawn(
-    ["gh", "repo", "create", fullName, "--private"],
-    { stdout: "inherit", stderr: "inherit" }
-  );
-  await createProc.exited;
-
-  if (createProc.exitCode !== 0) {
-    console.error(red(`Failed to create repository ${fullName}`));
+  const spinner = new Spinner(`Creating private repo ${fullName}...`);
+  spinner.start();
+  let created;
+  try {
+    created = await createRepo(username, name);
+  } catch (e) {
+    spinner.stop();
+    console.error(red(e instanceof Error ? e.message : `Failed to create ${fullName}`));
     process.exit(1);
   }
+  spinner.stop();
 
   // Add remote origin
-  const sshUrl = `git@github.com:${fullName}.git`;
-  const { exitCode: addRemoteExit } = await executeGit(["remote", "add", "origin", sshUrl], cwd);
+  const { exitCode: addRemoteExit } = await executeGit(["remote", "add", "origin", created.sshUrl], cwd);
   if (addRemoteExit !== 0) {
     console.error(red("Failed to add remote origin."));
     process.exit(1);
@@ -110,13 +100,12 @@ export async function runCreate(repoName: string | undefined): Promise<void> {
     owner = parts[0];
     name = parts[1];
   } else {
-    const username = await getGitHubUsername();
-    if (!username) {
-      console.error(red("Failed to get GitHub username. Is `gh` authenticated?"));
-      console.error("Run: gh auth login");
+    try {
+      owner = await getCurrentUser();
+    } catch (e) {
+      console.error(red(e instanceof Error ? e.message : "Failed to get GitHub user."));
       process.exit(1);
     }
-    owner = username;
     name = repoName;
   }
 
@@ -129,35 +118,21 @@ export async function runCreate(repoName: string | undefined): Promise<void> {
     process.exit(1);
   }
 
-  // Create the repo on GitHub (no clone yet)
-  console.error(`Creating private repo ${fullName}...`);
-  const createProc = Bun.spawn(
-    ["gh", "repo", "create", fullName, "--private"],
-    {
-      stdout: "inherit",
-      stderr: "inherit",
-    }
-  );
-  await createProc.exited;
-
-  if (createProc.exitCode !== 0) {
-    console.error(red(`Failed to create repository ${fullName}`));
+  const spinner = new Spinner(`Creating private repo ${fullName}...`);
+  spinner.start();
+  let created;
+  try {
+    created = await createRepo(owner, name);
+  } catch (e) {
+    spinner.stop();
+    console.error(red(e instanceof Error ? e.message : `Failed to create ${fullName}`));
     process.exit(1);
   }
-
-  // Get the SSH URL for cloning
-  const urlProc = Bun.spawn(
-    ["gh", "repo", "view", fullName, "--json", "sshUrl", "--jq", ".sshUrl"],
-    { stdout: "pipe", stderr: "pipe" }
-  );
-  const sshUrl = (await new Response(urlProc.stdout).text()).trim();
-  await urlProc.exited;
-
-  const cloneUrl = sshUrl || `git@github.com:${fullName}.git`;
+  spinner.stop();
 
   // Clone to the correct path
   console.error(`Cloning ${fullName}...`);
-  const success = await cloneRepo(cloneUrl, localPath);
+  const success = await cloneRepo(created.sshUrl, localPath);
   if (!success) {
     console.error(red(`Failed to clone ${fullName}`));
     process.exit(1);

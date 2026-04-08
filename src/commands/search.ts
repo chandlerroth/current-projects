@@ -4,37 +4,28 @@ import { cloneRepo, isGitRepo } from "../lib/git.ts";
 import { green, red, yellow, gray } from "../lib/colors.ts";
 import { select } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
-import { fetchGhRepos, type GhRepo } from "../lib/github.ts";
+import { fetchGhRepos, searchRepos, type GhRepo } from "../lib/gh-api.ts";
 
 export async function runSearch(query: string | undefined, nonInteractive: boolean): Promise<void> {
-  const spinner = new Spinner("Fetching repos from GitHub...");
+  const spinner = new Spinner(query ? `Searching GitHub for "${query}"...` : "Fetching repos from GitHub...");
   spinner.start();
 
-  let ghRepos: GhRepo[];
+  let results: GhRepo[];
   try {
-    ghRepos = await fetchGhRepos();
+    // Use server-side search when a query is given; otherwise list everything.
+    results = query ? await searchRepos(query) : await fetchGhRepos();
   } catch (error) {
     spinner.stop();
     if (error instanceof Error) {
       console.error(red(error.message));
     } else {
-      console.error(red("Failed to fetch repos from GitHub. Is `gh` installed and authenticated?"));
+      console.error(red("Failed to fetch repos from GitHub."));
     }
     process.exit(1);
   }
 
-  // Build set of cloned repos
-  const cloned = new Set(scanProjects().map((r) => r.displayName));
-
-  // Filter by query if provided
-  let results = ghRepos;
-  if (query) {
-    const lower = query.toLowerCase();
-    results = ghRepos.filter((r) =>
-      r.nameWithOwner.toLowerCase().includes(lower) ||
-      (r.description && r.description.toLowerCase().includes(lower))
-    );
-  }
+  // Build set of cloned repos (lowercased for case-insensitive match)
+  const cloned = new Set(scanProjects().map((r) => r.displayName.toLowerCase()));
 
   spinner.stop();
 
@@ -74,7 +65,7 @@ export async function runSearch(query: string | undefined, nonInteractive: boole
 
   if (isSelectedCloned) {
     // Print path like `list` does
-    const project = scanProjects().find((r) => r.displayName === selected.toLowerCase());
+    const project = scanProjects().find((r) => r.displayName.toLowerCase() === selected.toLowerCase());
     if (project) {
       console.log(project.fullPath);
     }

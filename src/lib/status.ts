@@ -1,13 +1,5 @@
 import { type RepoInfo } from "./paths.ts";
-import {
-  fetch,
-  getCurrentBranch,
-  getUpstream,
-  getAheadBehind,
-  getChangedFilesCount,
-  isGitRepo,
-  branchExists,
-} from "./git.ts";
+import { executeGitWithOutput, isGitRepo, getStashCount } from "./git.ts";
 import { blue, green, red, yellow } from "./colors.ts";
 
 export interface RepoStatus {
@@ -18,6 +10,52 @@ export interface RepoStatus {
   behind: number;
   changes: number;
   installed: boolean;
+}
+
+/**
+ * Parse the output of `git status --porcelain=v2 --branch` into a RepoStatus.
+ * Format reference: https://git-scm.com/docs/git-status#_porcelain_format_version_2
+ *
+ *   # branch.oid <sha>
+ *   # branch.head <name>
+ *   # branch.upstream <upstream>
+ *   # branch.ab +<ahead> -<behind>
+ *   1 .M ... path
+ *   2 R. ... old new
+ *   ? untracked
+ *   ! ignored
+ */
+export function parsePorcelainV2(stdout: string): {
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  changes: number;
+} {
+  let branch: string | null = null;
+  let ahead = 0;
+  let behind = 0;
+  let changes = 0;
+
+  for (const line of stdout.split("\n")) {
+    if (!line) continue;
+    if (line.startsWith("# branch.head ")) {
+      branch = line.slice("# branch.head ".length).trim() || null;
+    } else if (line.startsWith("# branch.ab ")) {
+      const m = line.match(/\+(\d+)\s+-(\d+)/);
+      if (m) {
+        ahead = parseInt(m[1], 10);
+        behind = parseInt(m[2], 10);
+      }
+    } else if (line[0] === "1" || line[0] === "2" || line[0] === "u" || line[0] === "?") {
+      // Tracked changes (1=ordinary, 2=renamed/copied, u=unmerged) or untracked.
+      changes++;
+    }
+  }
+
+  // Detached HEAD shows up as "(detached)"
+  if (branch === "(detached)") branch = null;
+
+  return { branch, ahead, behind, changes };
 }
 
 export async function getRepoStatus(repo: RepoInfo, index: number): Promise<RepoStatus> {
@@ -37,29 +75,22 @@ export async function getRepoStatus(repo: RepoInfo, index: number): Promise<Repo
 
   status.installed = true;
 
-  // Fetch in background (don't wait)
-  fetch(repo.fullPath);
+  // Single git call gives us branch, ahead/behind, and change count.
+  // Run stash list in parallel since it can't be folded into porcelain.
+  const [statusResult, stashCount] = await Promise.all([
+    executeGitWithOutput(["status", "--porcelain=v2", "--branch"], repo.fullPath),
+    getStashCount(repo.fullPath),
+  ]);
 
-  // Get current branch
-  status.branch = await getCurrentBranch(repo.fullPath);
-
-  // Get upstream or compare against main/master
-  let compareBranch = await getUpstream(repo.fullPath);
-  if (!compareBranch) {
-    if (await branchExists(repo.fullPath, "origin/main")) {
-      compareBranch = "origin/main";
-    } else if (await branchExists(repo.fullPath, "origin/master")) {
-      compareBranch = "origin/master";
-    }
+  if (statusResult.exitCode === 0) {
+    const parsed = parsePorcelainV2(statusResult.stdout);
+    status.branch = parsed.branch;
+    status.ahead = parsed.ahead;
+    status.behind = parsed.behind;
+    // Count stashes alongside dirty files in the "changes" bucket — they
+    // represent unsaved work the user might lose on `prj rm`.
+    status.changes = parsed.changes + stashCount;
   }
-
-  if (compareBranch) {
-    const { ahead, behind } = await getAheadBehind(repo.fullPath, compareBranch);
-    status.ahead = ahead;
-    status.behind = behind;
-  }
-
-  status.changes = await getChangedFilesCount(repo.fullPath);
 
   return status;
 }

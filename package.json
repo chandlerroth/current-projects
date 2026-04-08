@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --compile --outfile prj"
+    "build": "bun build src/index.ts --compile --outfile prj",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",

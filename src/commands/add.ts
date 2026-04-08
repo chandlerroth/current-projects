@@ -4,7 +4,7 @@ import { cloneRepo, isGitRepo } from "../lib/git.ts";
 import { green, red, yellow, gray } from "../lib/colors.ts";
 import { select } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
-import { fetchGhRepos, type GhRepo } from "../lib/github.ts";
+import { fetchGhRepos, type GhRepo } from "../lib/gh-api.ts";
 
 export async function runAdd(repoUrl: string | undefined): Promise<void> {
   if (!repoUrl) {
@@ -20,7 +20,7 @@ export async function runAdd(repoUrl: string | undefined): Promise<void> {
       if (error instanceof Error) {
         console.error(red(error.message));
       } else {
-        console.error(red("Failed to fetch repos from GitHub. Is `gh` installed and authenticated?"));
+        console.error(red("Failed to fetch repos from GitHub."));
       }
       process.exit(1);
     }
@@ -68,15 +68,15 @@ export async function runAdd(repoUrl: string | undefined): Promise<void> {
   if (await isGitRepo(repoInfo.fullPath)) {
     console.error(yellow(`${repoInfo.displayName} already exists at ${repoInfo.fullPath}`));
     console.log(repoInfo.fullPath);
-  } else {
-    console.error(`Cloning ${repoInfo.displayName}...`);
-    const success = await cloneRepo(fullUrl, repoInfo.fullPath);
-    if (success) {
-      console.error(green(`Cloned to ${repoInfo.fullPath}`));
-      console.log(repoInfo.fullPath);
-    } else {
-      console.error(red(`Failed to clone ${repoInfo.displayName}`));
-      process.exit(1);
-    }
+    return;
   }
+
+  console.error(`Cloning ${repoInfo.displayName}...`);
+  const success = await cloneRepo(fullUrl, repoInfo.fullPath);
+  if (!success) {
+    console.error(red(`Failed to clone ${repoInfo.displayName}`));
+    process.exit(1);
+  }
+  console.error(green(`Cloned to ${repoInfo.fullPath}`));
+  console.log(repoInfo.fullPath);
 }

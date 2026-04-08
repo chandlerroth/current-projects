@@ -7,7 +7,7 @@ import { Spinner } from "../lib/spinner.ts";
 import { getRepoStatus, formatStatusHint } from "../lib/status.ts";
 import { join } from "path";
 
-export async function runDelete(arg: string | undefined, nonInteractive = false): Promise<void> {
+export async function runDelete(arg: string | undefined, nonInteractive = false, force = false): Promise<void> {
   const repos = scanProjects();
 
   let index: number;
@@ -68,51 +68,58 @@ export async function runDelete(arg: string | undefined, nonInteractive = false)
 
   const repo = repos[index - 1];
 
-  console.error(`Checking ${repo.displayName}...`);
+  if (!force) {
+    console.error(`Checking ${repo.displayName}...`);
 
-  // Check if directory exists and is a git repo
-  const isRepo = await isGitRepo(repo.fullPath);
+    // Check if directory exists and is a git repo
+    const isRepo = await isGitRepo(repo.fullPath);
 
-  const issues: string[] = [];
+    const issues: string[] = [];
 
-  if (isRepo) {
-    // Run safety checks
-    const changedCount = await getChangedFilesCount(repo.fullPath);
-    if (changedCount > 0) {
-      issues.push(`${changedCount} uncommitted change${changedCount === 1 ? "" : "s"}`);
-    }
-
-    const upstream = await getUpstream(repo.fullPath);
-    if (upstream) {
-      const { ahead } = await getAheadBehind(repo.fullPath, upstream);
-      if (ahead > 0) {
-        issues.push(`${ahead} unpushed commit${ahead === 1 ? "" : "s"}`);
+    if (isRepo) {
+      // Run safety checks in parallel
+      const [changedCount, upstream, stashCount] = await Promise.all([
+        getChangedFilesCount(repo.fullPath),
+        getUpstream(repo.fullPath),
+        getStashCount(repo.fullPath),
+      ]);
+      if (changedCount > 0) {
+        issues.push(`${changedCount} uncommitted change${changedCount === 1 ? "" : "s"}`);
+      }
+      if (upstream) {
+        const { ahead } = await getAheadBehind(repo.fullPath, upstream);
+        if (ahead > 0) {
+          issues.push(`${ahead} unpushed commit${ahead === 1 ? "" : "s"}`);
+        }
+      }
+      if (stashCount > 0) {
+        issues.push(`${stashCount} stash${stashCount === 1 ? "" : "es"}`);
       }
     }
 
-    const stashCount = await getStashCount(repo.fullPath);
-    if (stashCount > 0) {
-      issues.push(`${stashCount} stash${stashCount === 1 ? "" : "es"}`);
+    if (issues.length > 0) {
+      console.error();
+      console.error(yellow("Warning: This repository has unsaved work:"));
+      for (const issue of issues) {
+        console.error(`  - ${issue}`);
+      }
     }
-  }
 
-  // Show warnings if there are issues (to stderr so shell integration doesn't capture)
-  if (issues.length > 0) {
-    console.error();
-    console.error(yellow("Warning: This repository has unsaved work:"));
-    for (const issue of issues) {
-      console.error(`  - ${issue}`);
+    if (nonInteractive) {
+      // Without --force, refuse to delete a dirty repo non-interactively.
+      if (issues.length > 0) {
+        console.error(red("Refusing to delete in --non-interactive mode without --force."));
+        process.exit(1);
+      }
+    } else {
+      console.error();
+      process.stderr.write(`Remove ${repo.displayName}? [y/N]: `);
+      const confirmed = await waitForConfirmation();
+      if (!confirmed) {
+        console.error(gray("Cancelled."));
+        return;
+      }
     }
-  }
-
-  // Always prompt for confirmation (to stderr)
-  console.error();
-  process.stderr.write(`Remove ${repo.displayName}? [y/N]: `);
-
-  const confirmed = await waitForConfirmation();
-  if (!confirmed) {
-    console.error(gray("Cancelled."));
-    return;
   }
 
   // Delete directory
