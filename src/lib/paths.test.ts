@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { isShorthand, expandRepoUrl, parseRepoUrl } from "./paths.ts";
+import { isShorthand, expandRepoUrl, parseRepoUrl, ensureInsideProjects, projectsDir } from "./paths.ts";
+import { join } from "path";
 
 test("isShorthand recognizes user/repo", () => {
   expect(isShorthand("user/repo")).toBe(true);
@@ -41,4 +42,34 @@ test("parseRepoUrl handles HTTPS with and without .git", () => {
 test("parseRepoUrl returns null for garbage", () => {
   expect(parseRepoUrl("not a url")).toBeNull();
   expect(parseRepoUrl("git@bad")).toBeNull();
+});
+
+test("isShorthand rejects traversal and dash-prefixed segments", () => {
+  expect(isShorthand("foo/..")).toBe(false);
+  expect(isShorthand("../foo")).toBe(false);
+  expect(isShorthand("./foo")).toBe(false);
+  expect(isShorthand("foo/.")).toBe(false);
+  expect(isShorthand("-rf/foo")).toBe(false);
+  expect(isShorthand("foo/-rf")).toBe(false);
+});
+
+test("parseRepoUrl rejects traversal in every format", () => {
+  expect(parseRepoUrl("foo/..")).toBeNull();
+  expect(parseRepoUrl("../etc")).toBeNull();
+  expect(parseRepoUrl("git@github.com:foo/..")).toBeNull();
+  expect(parseRepoUrl("git@github.com:../foo")).toBeNull();
+  expect(parseRepoUrl("https://github.com/foo/..")).toBeNull();
+  // Note: `new URL()` already collapses leading `..` segments, so something
+  // like `https://github.com/../etc/passwd` resolves to `etc/passwd` and is
+  // safely contained inside `~/Projects/etc/passwd`. No test for that case.
+});
+
+test("ensureInsideProjects allows children, rejects siblings/parents", () => {
+  const root = projectsDir();
+  expect(() => ensureInsideProjects(join(root, "alice", "one"))).not.toThrow();
+  expect(() => ensureInsideProjects(join(root, "alice"))).not.toThrow();
+  expect(() => ensureInsideProjects(root)).toThrow();
+  expect(() => ensureInsideProjects(join(root, ".."))).toThrow();
+  expect(() => ensureInsideProjects(join(root, "..", "etc"))).toThrow();
+  expect(() => ensureInsideProjects("/etc/passwd")).toThrow();
 });

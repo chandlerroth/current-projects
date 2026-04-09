@@ -1,11 +1,16 @@
 import { rmSync } from "fs";
-import { expandRepoUrl, parseRepoUrl } from "../lib/paths.ts";
+import { expandRepoUrl, parseRepoUrl, ensureInsideProjects } from "../lib/paths.ts";
 import { scanProjects } from "../lib/config.ts";
 import { cloneRepo, isGitRepo } from "../lib/git.ts";
 
-/** Best-effort cleanup of a partially-cloned target directory. */
+/**
+ * Best-effort cleanup of a partially-cloned target directory. The containment
+ * check is critical: `path` originates from user input via `parseRepoUrl`, and
+ * a recursive delete must never escape `~/Projects`.
+ */
 function cleanupPartialClone(path: string): void {
   try {
+    ensureInsideProjects(path);
     rmSync(path, { recursive: true, force: true });
   } catch {
     // ignore

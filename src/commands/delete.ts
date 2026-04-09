@@ -1,6 +1,6 @@
 import { scanProjects } from "../lib/config.ts";
 import { getChangedFilesCount, getAheadBehind, getUpstream, getStashCount, isGitRepo } from "../lib/git.ts";
-import { projectsDir } from "../lib/paths.ts";
+import { projectsDir, ensureInsideProjects } from "../lib/paths.ts";
 import { red, yellow, gray } from "../lib/colors.ts";
 import { select, confirm } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
@@ -119,8 +119,12 @@ export async function runDelete(arg: string | undefined, nonInteractive = false,
     }
   }
 
-  // Delete directory
-  const proc = Bun.spawn(["rm", "-rf", repo.fullPath]);
+  // Delete directory. Containment check is defense-in-depth: today
+  // `repo.fullPath` always comes from `scanProjects()` (filesystem-sourced),
+  // but assert anyway so a future refactor can't accidentally delete
+  // outside ~/Projects.
+  ensureInsideProjects(repo.fullPath);
+  const proc = Bun.spawn(["rm", "-rf", "--", repo.fullPath]);
   await proc.exited;
 
   // Output parent directory (org-level) to stdout for shell integration to cd into

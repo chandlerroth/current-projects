@@ -1,4 +1,4 @@
-import { projectsDir } from "../lib/paths.ts";
+import { projectsDir, ensureInsideProjects } from "../lib/paths.ts";
 import { cloneRepo, isGitRepo, executeGitWithOutput, executeGit } from "../lib/git.ts";
 import { green, red, yellow } from "../lib/colors.ts";
 import { join, basename } from "path";
@@ -25,6 +25,7 @@ async function rollbackCreate(opts: {
   }
   if (opts.localPath) {
     try {
+      ensureInsideProjects(opts.localPath);
       rmSync(opts.localPath, { recursive: true, force: true });
       notes.push(`removed ${opts.localPath}`);
     } catch {
