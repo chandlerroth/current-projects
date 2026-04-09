@@ -7,6 +7,9 @@ import { runSearch } from "./commands/search.ts";
 import { runAuth } from "./commands/auth.ts";
 import { runShellInit } from "./commands/shell-init.ts";
 import { red } from "./lib/colors.ts";
+import pkg from "../package.json" with { type: "json" };
+
+const VERSION: string = (pkg as { version: string }).version;
 
 const HELP = `prj - Project Manager
 
@@ -26,6 +29,7 @@ Commands:
 Flags:
   --non-interactive   Disable interactive prompts; emit JSON where applicable
   --force             Skip safety checks (rm only)
+  --version, -v       Print prj's version and exit
 
 Environment:
   GITHUB_TOKEN        GitHub API token. Resolution order:
@@ -75,6 +79,11 @@ async function main() {
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
     console.log(HELP);
+    return;
+  }
+
+  if (command === "--version" || command === "-v" || command === "version") {
+    console.log(VERSION);
     return;
   }
 
