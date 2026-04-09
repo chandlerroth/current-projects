@@ -1,5 +1,5 @@
 import { test, expect, beforeEach, afterEach } from "bun:test";
-import { resolveToken, _resetTokenCache, fetchGhRepos, searchRepos, createRepo } from "./gh-api.ts";
+import { resolveToken, _resetTokenCache, fetchGhRepos, searchRepos, createRepo, redactToken } from "./gh-api.ts";
 
 const origFetch = globalThis.fetch;
 const origToken = process.env.GITHUB_TOKEN;
@@ -119,4 +119,23 @@ test("ghFetch surfaces error body and rate-limit hint on 403", async () => {
       headers: { "x-ratelimit-remaining": "0" },
     })) as typeof fetch;
   await expect(fetchGhRepos()).rejects.toThrow(/rate limit exhausted/);
+});
+
+test("redactToken scrubs all known GitHub token shapes", () => {
+  expect(redactToken("oops ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa here"))
+    .toBe("oops <redacted> here");
+  expect(redactToken("github_pat_11ABCDEFG_aaaaaaaaaaaaaaaaaaaaaaa"))
+    .toBe("<redacted>");
+  expect(redactToken("classic 0123456789abcdef0123456789abcdef01234567 done"))
+    .toBe("classic <redacted> done");
+  // Doesn't munge unrelated text.
+  expect(redactToken("error 401 unauthorized")).toBe("error 401 unauthorized");
+});
+
+test("ghFetch error body has tokens redacted before throwing", async () => {
+  globalThis.fetch = (async () =>
+    new Response("token ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa is invalid", {
+      status: 401,
+    })) as typeof fetch;
+  await expect(fetchGhRepos()).rejects.toThrow(/<redacted>/);
 });

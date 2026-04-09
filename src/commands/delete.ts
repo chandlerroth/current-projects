@@ -6,6 +6,7 @@ import { select, confirm } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
 import { getAllStatuses, formatStatusHint } from "../lib/status.ts";
 import { join } from "path";
+import { rmSync } from "fs";
 
 export async function runDelete(arg: string | undefined, nonInteractive = false, force = false): Promise<void> {
   const repos = scanProjects();
@@ -122,10 +123,11 @@ export async function runDelete(arg: string | undefined, nonInteractive = false,
   // Delete directory. Containment check is defense-in-depth: today
   // `repo.fullPath` always comes from `scanProjects()` (filesystem-sourced),
   // but assert anyway so a future refactor can't accidentally delete
-  // outside ~/Projects.
+  // outside ~/Projects. Use native rmSync rather than shelling out to
+  // /bin/rm so we don't depend on PATH and can't be tripped by leading-dash
+  // path edge cases.
   ensureInsideProjects(repo.fullPath);
-  const proc = Bun.spawn(["rm", "-rf", "--", repo.fullPath]);
-  await proc.exited;
+  rmSync(repo.fullPath, { recursive: true, force: true });
 
   // Output parent directory (org-level) to stdout for shell integration to cd into
   const parentDir = join(projectsDir(), repo.username);

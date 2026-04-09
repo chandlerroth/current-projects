@@ -2,26 +2,44 @@ import { projectsDir, ensureInsideProjects } from "../lib/paths.ts";
 import { cloneRepo, isGitRepo, executeGitWithOutput, executeGit } from "../lib/git.ts";
 import { green, red, yellow } from "../lib/colors.ts";
 import { join, basename } from "path";
-import { mkdirSync, renameSync } from "fs";
-import { rmSync } from "fs";
+import { mkdirSync, renameSync, existsSync, rmSync } from "fs";
 import { createRepo, deleteRepo, getCurrentUser } from "../lib/gh-api.ts";
 import { Spinner } from "../lib/spinner.ts";
 
 /**
- * Best-effort rollback after a partial `create`. We delete the GitHub repo we
- * just made (if any) and any partially-cloned local directory. Errors here are
+ * Split GitHub's canonical `nameWithOwner` (returned by createRepo). We use
+ * this — never the user's pre-creation input — as the source of truth when
+ * rolling back, so any GitHub-side normalization (casing, redirects, etc.)
+ * is respected.
+ */
+function splitNwo(nwo: string): { owner: string; name: string } | null {
+  const parts = nwo.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  return { owner: parts[0], name: parts[1] };
+}
+
+/**
+ * Best-effort rollback after a partial `create`. Always pass the
+ * `nameWithOwner` returned by `createRepo` (not the user's CLI args) as
+ * `nwo` so we delete exactly what GitHub created. Errors here are
  * intentionally swallowed — the caller is already in an error path and the
  * original cause is what the user needs to see.
  */
 async function rollbackCreate(opts: {
-  owner?: string;
-  name?: string;
+  nwo?: string;
   localPath?: string;
 }): Promise<string | null> {
   const notes: string[] = [];
-  if (opts.owner && opts.name) {
-    const ok = await deleteRepo(opts.owner, opts.name);
-    notes.push(ok ? `deleted ${opts.owner}/${opts.name} on GitHub` : `could not delete ${opts.owner}/${opts.name} on GitHub — clean up manually`);
+  if (opts.nwo) {
+    const parsed = splitNwo(opts.nwo);
+    if (parsed) {
+      const ok = await deleteRepo(parsed.owner, parsed.name);
+      notes.push(
+        ok
+          ? `deleted ${opts.nwo} on GitHub`
+          : `could not delete ${opts.nwo} on GitHub — clean up manually`,
+      );
+    }
   }
   if (opts.localPath) {
     try {
@@ -77,7 +95,7 @@ async function runCreateFromCwd(): Promise<void> {
   // Add remote origin
   const { exitCode: addRemoteExit } = await executeGit(["remote", "add", "origin", created.sshUrl], cwd);
   if (addRemoteExit !== 0) {
-    const note = await rollbackCreate({ owner: username, name });
+    const note = await rollbackCreate({ nwo: created.nameWithOwner });
     console.error(red("Failed to add remote origin."));
     if (note) console.error(yellow(`Rolled back: ${note}`));
     process.exit(1);
@@ -92,7 +110,7 @@ async function runCreateFromCwd(): Promise<void> {
       // Best-effort: also try to drop the just-added remote so the user's local
       // state is restored to "no origin".
       await executeGit(["remote", "remove", "origin"], cwd);
-      const note = await rollbackCreate({ owner: username, name });
+      const note = await rollbackCreate({ nwo: created.nameWithOwner });
       console.error(red(`Failed to push ${branch} to origin.`));
       if (note) console.error(yellow(`Rolled back: ${note}`));
       process.exit(1);
@@ -103,6 +121,14 @@ async function runCreateFromCwd(): Promise<void> {
   const root = projectsDir();
   const targetPath = join(root, username.toLowerCase(), name.toLowerCase());
   if (cwd !== targetPath) {
+    if (existsSync(targetPath)) {
+      // Don't clobber. POSIX rename over an empty dir succeeds silently and
+      // would bury whatever was there.
+      const note = await rollbackCreate({ nwo: created.nameWithOwner });
+      console.error(red(`Refusing to move: ${targetPath} already exists.`));
+      if (note) console.error(yellow(`Rolled back: ${note}`));
+      process.exit(1);
+    }
     mkdirSync(join(root, username.toLowerCase()), { recursive: true });
     renameSync(cwd, targetPath);
     console.error(green(`Moved to ${targetPath}`));
@@ -153,7 +179,7 @@ async function runCreateNonInteractive(repoName: string | undefined): Promise<vo
     }
     const { exitCode: addExit } = await executeGit(["remote", "add", "origin", created.sshUrl], cwd);
     if (addExit !== 0) {
-      const note = await rollbackCreate({ owner: username, name });
+      const note = await rollbackCreate({ nwo: created.nameWithOwner });
       emitJson({ success: false, error: "Failed to add remote origin.", rollback: note });
       process.exit(1);
     }
@@ -162,7 +188,7 @@ async function runCreateNonInteractive(repoName: string | undefined): Promise<vo
       const { exitCode: pushExit } = await executeGit(["push", "-u", "origin", branch], cwd);
       if (pushExit !== 0) {
         await executeGit(["remote", "remove", "origin"], cwd);
-        const note = await rollbackCreate({ owner: username, name });
+        const note = await rollbackCreate({ nwo: created.nameWithOwner });
         emitJson({ success: false, error: `Failed to push ${branch} to origin.`, rollback: note });
         process.exit(1);
       }
@@ -171,6 +197,15 @@ async function runCreateNonInteractive(repoName: string | undefined): Promise<vo
     const root = projectsDir();
     const targetPath = join(root, username.toLowerCase(), name.toLowerCase());
     if (cwd !== targetPath) {
+      if (existsSync(targetPath)) {
+        const note3 = await rollbackCreate({ nwo: created.nameWithOwner });
+        emitJson({
+          success: false,
+          error: `Refusing to move: ${targetPath} already exists.`,
+          rollback: note3,
+        });
+        process.exit(1);
+      }
       mkdirSync(join(root, username.toLowerCase()), { recursive: true });
       renameSync(cwd, targetPath);
     }
@@ -219,7 +254,7 @@ async function runCreateNonInteractive(repoName: string | undefined): Promise<vo
   }
   const ok = await cloneRepo(created.sshUrl, localPath);
   if (!ok) {
-    const note = await rollbackCreate({ owner, name, localPath });
+    const note = await rollbackCreate({ nwo: created.nameWithOwner, localPath });
     emitJson({ success: false, error: `Failed to clone ${fullName}`, rollback: note });
     process.exit(1);
   }
@@ -298,7 +333,7 @@ export async function runCreate(
   console.error(`Cloning ${fullName}...`);
   const success = await cloneRepo(created.sshUrl, localPath);
   if (!success) {
-    const note = await rollbackCreate({ owner, name, localPath });
+    const note = await rollbackCreate({ nwo: created.nameWithOwner, localPath });
     console.error(red(`Failed to clone ${fullName}`));
     if (note) console.error(yellow(`Rolled back: ${note}`));
     process.exit(1);

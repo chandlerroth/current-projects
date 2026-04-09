@@ -1,6 +1,21 @@
 import { blue, gray, colors } from "./colors.ts";
 
 /**
+ * Track whether any prompt has put the terminal into raw mode. If the
+ * process exits abnormally (e.g. an unhandled rejection elsewhere) while a
+ * masked prompt is active, the user could otherwise be left with a terminal
+ * that has echo off — and the next thing they type (potentially a token)
+ * would land in their shell history blind. Restoring on `exit` is cheap
+ * insurance.
+ */
+let rawModeActive = false;
+process.on("exit", () => {
+  if (rawModeActive && process.stdin.isTTY) {
+    try { process.stdin.setRawMode(false); } catch {}
+  }
+});
+
+/**
  * Minimal line-buffered text prompt to stderr. Returns null on EOF/Ctrl+C.
  * Handles both TTY and piped input cleanly so callers don't have to.
  */
@@ -10,7 +25,10 @@ export async function promptText(
 ): Promise<string | null> {
   process.stderr.write(label);
   const isTTY = !!process.stdin.isTTY;
-  if (isTTY && opts.mask) process.stdin.setRawMode(true);
+  if (isTTY && opts.mask) {
+    process.stdin.setRawMode(true);
+    rawModeActive = true;
+  }
   process.stdin.resume();
 
   return new Promise((resolve) => {
@@ -41,7 +59,10 @@ export async function promptText(
     };
     const cleanup = () => {
       process.stdin.removeListener("data", onData);
-      if (isTTY && opts.mask) process.stdin.setRawMode(false);
+      if (isTTY && opts.mask) {
+        process.stdin.setRawMode(false);
+        rawModeActive = false;
+      }
       process.stdin.pause();
     };
     process.stdin.on("data", onData);
@@ -81,6 +102,7 @@ export async function select(options: SelectOption[]): Promise<string | null> {
   // Enable raw mode
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
+    rawModeActive = true;
   }
   process.stdin.resume();
 
@@ -192,6 +214,7 @@ export async function select(options: SelectOption[]): Promise<string | null> {
       process.stdin.removeListener("data", onKeypress);
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
+        rawModeActive = false;
       }
       process.stdin.pause();
       // Clear the menu

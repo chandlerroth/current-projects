@@ -94,3 +94,13 @@ test("create --non-interactive surfaces createRepo failure as JSON error", async
   expect(out.success).toBe(false);
   expect(out.error).toContain("name already exists");
 });
+
+test("create --non-interactive rolls back when local clone fails", async () => {
+  cloneShouldSucceed = false;
+  await expect(runCreate("acme/widget", true)).rejects.toThrow("__exit:1");
+  const out = JSON.parse(stdout);
+  expect(out.success).toBe(false);
+  expect(out.error).toContain("Failed to clone");
+  // Rollback metadata is included so agents can detect what happened.
+  expect(out).toHaveProperty("rollback");
+});

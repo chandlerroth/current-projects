@@ -42,11 +42,25 @@ export function resolveToken(): string | null {
   if (existsSync(hostsPath)) {
     try {
       const content = readFileSync(hostsPath, "utf8");
-      // Match the github.com block's oauth_token. Naive but works for gh's format.
-      const match = content.match(/github\.com:[\s\S]*?oauth_token:\s*(\S+)/);
-      if (match) {
-        cachedToken = match[1];
-        return cachedToken;
+      // Parse line-by-line so we only match the `github.com:` host block at
+      // column 0, not a substring like `github.com.internal.corp:`. Inside
+      // the block, indented lines are properties of the host.
+      const lines = content.split("\n");
+      let inGithubBlock = false;
+      for (const raw of lines) {
+        if (/^\S/.test(raw)) {
+          // Top-level host header. We require an exact match on `github.com:`
+          // (no trailing characters before the colon).
+          inGithubBlock = /^github\.com:\s*$/.test(raw);
+          continue;
+        }
+        if (inGithubBlock) {
+          const m = raw.match(/^\s+oauth_token:\s*(\S+)/);
+          if (m) {
+            cachedToken = m[1];
+            return cachedToken;
+          }
+        }
       }
     } catch {
       // fall through
@@ -77,10 +91,26 @@ function authHeaders(): Record<string, string> {
   };
 }
 
+/**
+ * Strip anything that looks like a GitHub token from a string before logging.
+ * Defense-in-depth: GitHub doesn't normally echo bearer tokens in error
+ * bodies, but we never want a leaked token to land in stdout/stderr or in
+ * the JSON output that agents parse.
+ */
+export function redactToken(s: string): string {
+  return s
+    .replace(/(gh[pous]_|github_pat_)[A-Za-z0-9_]{20,}/g, "<redacted>")
+    .replace(/\b[a-f0-9]{40}\b/g, "<redacted>");
+}
+
 async function ghFetch(path: string, init?: RequestInit): Promise<Response> {
   const url = path.startsWith("http") ? path : `${API}${path}`;
   const res = await fetch(url, {
     ...init,
+    // Never follow redirects automatically: if api.github.com ever 3xx'd to
+    // another host, the default `redirect: "follow"` would forward our
+    // `Authorization: Bearer <token>` header to that host.
+    redirect: "error",
     headers: { ...authHeaders(), ...(init?.headers as Record<string, string>) },
   });
   if (!res.ok) {
@@ -89,7 +119,7 @@ async function ghFetch(path: string, init?: RequestInit): Promise<Response> {
     try { body = await res.text(); } catch {}
     const hint = remaining === "0" ? " (rate limit exhausted)" : "";
     throw new Error(
-      `GitHub API ${res.status} ${res.statusText}${hint}: ${body.slice(0, 200)}`
+      redactToken(`GitHub API ${res.status} ${res.statusText}${hint}: ${body.slice(0, 200)}`),
     );
   }
   return res;
