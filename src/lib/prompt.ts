@@ -1,5 +1,61 @@
 import { blue, gray, colors } from "./colors.ts";
 
+/**
+ * Minimal line-buffered text prompt to stderr. Returns null on EOF/Ctrl+C.
+ * Handles both TTY and piped input cleanly so callers don't have to.
+ */
+export async function promptText(
+  label: string,
+  opts: { mask?: boolean } = {},
+): Promise<string | null> {
+  process.stderr.write(label);
+  const isTTY = !!process.stdin.isTTY;
+  if (isTTY && opts.mask) process.stdin.setRawMode(true);
+  process.stdin.resume();
+
+  return new Promise((resolve) => {
+    let buf = "";
+    const onData = (data: Buffer) => {
+      const s = data.toString();
+      for (const ch of s) {
+        if (ch === "\x03") {
+          cleanup();
+          process.stderr.write("\n");
+          return resolve(null);
+        }
+        if (ch === "\r" || ch === "\n") {
+          cleanup();
+          process.stderr.write("\n");
+          return resolve(buf);
+        }
+        if (ch === "\x7f" || ch === "\b") {
+          if (buf.length > 0) {
+            buf = buf.slice(0, -1);
+            if (opts.mask && isTTY) process.stderr.write("\b \b");
+          }
+          continue;
+        }
+        buf += ch;
+        if (opts.mask && isTTY) process.stderr.write("*");
+      }
+    };
+    const cleanup = () => {
+      process.stdin.removeListener("data", onData);
+      if (isTTY && opts.mask) process.stdin.setRawMode(false);
+      process.stdin.pause();
+    };
+    process.stdin.on("data", onData);
+  });
+}
+
+/** Yes/no confirmation. Returns false on Ctrl+C, EOF, or anything not y/yes. */
+export async function confirm(label: string): Promise<boolean> {
+  const ans = await promptText(label);
+  if (ans === null) return false;
+  const v = ans.trim().toLowerCase();
+  return v === "y" || v === "yes";
+}
+
 interface SelectOption {
   label: string;
   value: string;

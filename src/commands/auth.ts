@@ -1,7 +1,7 @@
 import { readConfig, writeConfig, configPath } from "../lib/user-config.ts";
 import { green, red, gray, yellow } from "../lib/colors.ts";
 import { _resetTokenCache, getCurrentUser } from "../lib/gh-api.ts";
-import { select } from "../lib/prompt.ts";
+import { select, promptText } from "../lib/prompt.ts";
 
 /** Check whether `gh` is installed and reachable on PATH. */
 async function ghInstalled(): Promise<boolean> {
@@ -26,48 +26,6 @@ async function ghAuthToken(): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/** Minimal line-buffered text prompt to stderr. Returns null on EOF/Ctrl+C. */
-async function promptText(label: string, opts: { mask?: boolean } = {}): Promise<string | null> {
-  process.stderr.write(label);
-  const isTTY = !!process.stdin.isTTY;
-  if (isTTY && opts.mask) process.stdin.setRawMode(true);
-  process.stdin.resume();
-
-  return new Promise((resolve) => {
-    let buf = "";
-    const onData = (data: Buffer) => {
-      const s = data.toString();
-      for (const ch of s) {
-        if (ch === "\x03") { // Ctrl+C
-          cleanup();
-          process.stderr.write("\n");
-          return resolve(null);
-        }
-        if (ch === "\r" || ch === "\n") {
-          cleanup();
-          process.stderr.write("\n");
-          return resolve(buf);
-        }
-        if (ch === "\x7f" || ch === "\b") {
-          if (buf.length > 0) {
-            buf = buf.slice(0, -1);
-            if (opts.mask && isTTY) process.stderr.write("\b \b");
-          }
-          continue;
-        }
-        buf += ch;
-        if (opts.mask && isTTY) process.stderr.write("*");
-      }
-    };
-    const cleanup = () => {
-      process.stdin.removeListener("data", onData);
-      if (isTTY && opts.mask) process.stdin.setRawMode(false);
-      process.stdin.pause();
-    };
-    process.stdin.on("data", onData);
-  });
 }
 
 async function saveAndVerify(token: string): Promise<void> {
@@ -248,7 +206,11 @@ export async function runAuth(
     console.error("  prj auth <token>        Same as `auth login <token>`");
     console.error("  prj auth logout         Remove the saved token");
     return;
-  } else if (RESERVED.has(sub) || !/^(gh[pous]_|github_pat_)[A-Za-z0-9_]{20,}$/.test(sub)) {
+  } else if (
+    RESERVED.has(sub) ||
+    // Modern fine-grained / OAuth tokens, OR legacy 40-hex classic PATs.
+    !/^((gh[pous]_|github_pat_)[A-Za-z0-9_]{20,}|[a-f0-9]{40})$/.test(sub)
+  ) {
     // Doesn't look like a GitHub token — refuse before we touch anything.
     console.error(red(`Unknown subcommand: ${sub}`));
     console.error("Run 'prj auth help' for usage.");

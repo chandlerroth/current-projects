@@ -1,6 +1,16 @@
+import { rmSync } from "fs";
 import { expandRepoUrl, parseRepoUrl } from "../lib/paths.ts";
 import { scanProjects } from "../lib/config.ts";
 import { cloneRepo, isGitRepo } from "../lib/git.ts";
+
+/** Best-effort cleanup of a partially-cloned target directory. */
+function cleanupPartialClone(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+}
 import { green, red, yellow, gray } from "../lib/colors.ts";
 import { select } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
@@ -37,6 +47,7 @@ export async function runAdd(
     }
     const ok = await cloneRepo(fullUrl, repoInfo.fullPath);
     if (!ok) {
+      cleanupPartialClone(repoInfo.fullPath);
       emitJson({ success: false, error: `Failed to clone ${repoInfo.displayName}` });
       process.exit(1);
     }
@@ -116,6 +127,7 @@ export async function runAdd(
   console.error(`Cloning ${repoInfo.displayName}...`);
   const success = await cloneRepo(fullUrl, repoInfo.fullPath);
   if (!success) {
+    cleanupPartialClone(repoInfo.fullPath);
     console.error(red(`Failed to clone ${repoInfo.displayName}`));
     process.exit(1);
   }

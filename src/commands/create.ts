@@ -3,8 +3,36 @@ import { cloneRepo, isGitRepo, executeGitWithOutput, executeGit } from "../lib/g
 import { green, red, yellow } from "../lib/colors.ts";
 import { join, basename } from "path";
 import { mkdirSync, renameSync } from "fs";
-import { createRepo, getCurrentUser } from "../lib/gh-api.ts";
+import { rmSync } from "fs";
+import { createRepo, deleteRepo, getCurrentUser } from "../lib/gh-api.ts";
 import { Spinner } from "../lib/spinner.ts";
+
+/**
+ * Best-effort rollback after a partial `create`. We delete the GitHub repo we
+ * just made (if any) and any partially-cloned local directory. Errors here are
+ * intentionally swallowed — the caller is already in an error path and the
+ * original cause is what the user needs to see.
+ */
+async function rollbackCreate(opts: {
+  owner?: string;
+  name?: string;
+  localPath?: string;
+}): Promise<string | null> {
+  const notes: string[] = [];
+  if (opts.owner && opts.name) {
+    const ok = await deleteRepo(opts.owner, opts.name);
+    notes.push(ok ? `deleted ${opts.owner}/${opts.name} on GitHub` : `could not delete ${opts.owner}/${opts.name} on GitHub — clean up manually`);
+  }
+  if (opts.localPath) {
+    try {
+      rmSync(opts.localPath, { recursive: true, force: true });
+      notes.push(`removed ${opts.localPath}`);
+    } catch {
+      // ignore
+    }
+  }
+  return notes.length ? notes.join("; ") : null;
+}
 
 async function runCreateFromCwd(): Promise<void> {
   const cwd = process.cwd();
@@ -48,7 +76,9 @@ async function runCreateFromCwd(): Promise<void> {
   // Add remote origin
   const { exitCode: addRemoteExit } = await executeGit(["remote", "add", "origin", created.sshUrl], cwd);
   if (addRemoteExit !== 0) {
+    const note = await rollbackCreate({ owner: username, name });
     console.error(red("Failed to add remote origin."));
+    if (note) console.error(yellow(`Rolled back: ${note}`));
     process.exit(1);
   }
 
@@ -56,7 +86,16 @@ async function runCreateFromCwd(): Promise<void> {
   const { stdout: branch } = await executeGitWithOutput(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
   if (branch) {
     console.error(`Pushing ${branch} to origin...`);
-    await executeGit(["push", "-u", "origin", branch], cwd);
+    const { exitCode: pushExit } = await executeGit(["push", "-u", "origin", branch], cwd);
+    if (pushExit !== 0) {
+      // Best-effort: also try to drop the just-added remote so the user's local
+      // state is restored to "no origin".
+      await executeGit(["remote", "remove", "origin"], cwd);
+      const note = await rollbackCreate({ owner: username, name });
+      console.error(red(`Failed to push ${branch} to origin.`));
+      if (note) console.error(yellow(`Rolled back: ${note}`));
+      process.exit(1);
+    }
   }
 
   // Move repo into ~/Projects/<owner>/<name> if not already there
@@ -113,11 +152,20 @@ async function runCreateNonInteractive(repoName: string | undefined): Promise<vo
     }
     const { exitCode: addExit } = await executeGit(["remote", "add", "origin", created.sshUrl], cwd);
     if (addExit !== 0) {
-      emitJson({ success: false, error: "Failed to add remote origin." });
+      const note = await rollbackCreate({ owner: username, name });
+      emitJson({ success: false, error: "Failed to add remote origin.", rollback: note });
       process.exit(1);
     }
     const { stdout: branch } = await executeGitWithOutput(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
-    if (branch) await executeGit(["push", "-u", "origin", branch], cwd);
+    if (branch) {
+      const { exitCode: pushExit } = await executeGit(["push", "-u", "origin", branch], cwd);
+      if (pushExit !== 0) {
+        await executeGit(["remote", "remove", "origin"], cwd);
+        const note = await rollbackCreate({ owner: username, name });
+        emitJson({ success: false, error: `Failed to push ${branch} to origin.`, rollback: note });
+        process.exit(1);
+      }
+    }
 
     const root = projectsDir();
     const targetPath = join(root, username.toLowerCase(), name.toLowerCase());
@@ -170,7 +218,8 @@ async function runCreateNonInteractive(repoName: string | undefined): Promise<vo
   }
   const ok = await cloneRepo(created.sshUrl, localPath);
   if (!ok) {
-    emitJson({ success: false, error: `Failed to clone ${fullName}` });
+    const note = await rollbackCreate({ owner, name, localPath });
+    emitJson({ success: false, error: `Failed to clone ${fullName}`, rollback: note });
     process.exit(1);
   }
   emitJson({
@@ -248,7 +297,9 @@ export async function runCreate(
   console.error(`Cloning ${fullName}...`);
   const success = await cloneRepo(created.sshUrl, localPath);
   if (!success) {
+    const note = await rollbackCreate({ owner, name, localPath });
     console.error(red(`Failed to clone ${fullName}`));
+    if (note) console.error(yellow(`Rolled back: ${note}`));
     process.exit(1);
   }
 

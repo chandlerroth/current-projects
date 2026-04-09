@@ -168,6 +168,20 @@ export async function getCurrentUser(): Promise<string> {
 }
 
 /**
+ * Best-effort delete a repo. Used for rollback after a failed `prj create`.
+ * Swallows errors and returns false on failure — the caller is already in an
+ * error path and we don't want to clobber the original error.
+ */
+export async function deleteRepo(owner: string, name: string): Promise<boolean> {
+  try {
+    await ghFetch(`/repos/${owner}/${name}`, { method: "DELETE" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Create a new private repo. If owner is the current user, posts to /user/repos.
  * Otherwise posts to /orgs/{owner}/repos. Returns SSH/HTML URLs.
  */

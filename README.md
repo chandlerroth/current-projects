@@ -125,6 +125,26 @@ prj auth --non-interactive --action=login --token=ghp_xxx
 - `N changes` — Uncommitted changes
 - `Not installed` — Directory exists but is not a git repo
 
+## Troubleshooting
+
+**`No GitHub token found`**
+`prj` resolves a token in this order: `$GITHUB_TOKEN` / `$GH_TOKEN`, then `~/.config/prj/config.json`, then `~/.config/gh/hosts.yml`. Run `prj auth status` to see what it picked up. Save one with `prj auth <token>` (token created at https://github.com/settings/tokens — needs `repo` scope, or `delete_repo` if you want `prj create` rollback to clean up failed attempts).
+
+**`prj create` left an orphaned repo on GitHub**
+`prj create` rolls back automatically if the clone or initial push fails. If your token lacks `delete_repo` scope, the rollback message will say so — delete the repo manually at `https://github.com/<owner>/<name>/settings`.
+
+**`prj add` left an empty directory after a failed clone**
+This shouldn't happen anymore — `add` removes the partial directory on failure. If you see one, it likely predates that fix; it's safe to `rm -rf`.
+
+**`prj list` is slow with many repos**
+Each repo runs `git status --porcelain=v2` plus `git stash list`. With dozens of repos this takes a second or two. They run in parallel via `Promise.allSettled`, so one slow repo won't block the rest.
+
+**`prj list` / `prj rm` doesn't `cd` into the selected project**
+You need shell integration. Add `eval "$(prj shell-init)"` to `~/.zshrc` or `~/.bashrc` and reopen your shell.
+
+**Tests fail with `EACCES` on a temp dir**
+`prj test` shells out to real `git` for some integration tests. Make sure `git` is on `$PATH` and your tmpdir is writable.
+
 ## Project Structure
 
 Projects are organized under `~/Projects/<org>/<repo>`:

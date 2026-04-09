@@ -58,6 +58,30 @@ export function parsePorcelainV2(stdout: string): {
   return { branch, ahead, behind, changes };
 }
 
+/**
+ * Resolve status for every repo in parallel. Uses `allSettled` so a single
+ * misbehaving repo (e.g. permissions, corrupted .git) can't sink the listing.
+ * Failed repos are returned as `installed: false` placeholders.
+ */
+export async function getAllStatuses(repos: RepoInfo[]): Promise<RepoStatus[]> {
+  const settled = await Promise.allSettled(
+    repos.map((repo, i) => getRepoStatus(repo, i + 1)),
+  );
+  return settled.map((r, i) =>
+    r.status === "fulfilled"
+      ? r.value
+      : {
+          index: i + 1,
+          displayName: repos[i].displayName,
+          branch: null,
+          ahead: 0,
+          behind: 0,
+          changes: 0,
+          installed: false,
+        },
+  );
+}
+
 export async function getRepoStatus(repo: RepoInfo, index: number): Promise<RepoStatus> {
   const status: RepoStatus = {
     index,

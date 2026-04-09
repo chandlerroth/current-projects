@@ -2,9 +2,9 @@ import { scanProjects } from "../lib/config.ts";
 import { getChangedFilesCount, getAheadBehind, getUpstream, getStashCount, isGitRepo } from "../lib/git.ts";
 import { projectsDir } from "../lib/paths.ts";
 import { red, yellow, gray } from "../lib/colors.ts";
-import { select } from "../lib/prompt.ts";
+import { select, confirm } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
-import { getRepoStatus, formatStatusHint } from "../lib/status.ts";
+import { getAllStatuses, formatStatusHint } from "../lib/status.ts";
 import { join } from "path";
 
 export async function runDelete(arg: string | undefined, nonInteractive = false, force = false): Promise<void> {
@@ -27,9 +27,7 @@ export async function runDelete(arg: string | undefined, nonInteractive = false,
     const spinner = new Spinner("Checking repositories...");
     spinner.start();
 
-    const statuses = await Promise.all(
-      repos.map((repo, i) => getRepoStatus(repo, i + 1))
-    );
+    const statuses = await getAllStatuses(repos);
 
     spinner.stop();
 
@@ -113,8 +111,7 @@ export async function runDelete(arg: string | undefined, nonInteractive = false,
       }
     } else {
       console.error();
-      process.stderr.write(`Remove ${repo.displayName}? [y/N]: `);
-      const confirmed = await waitForConfirmation();
+      const confirmed = await confirm(`Remove ${repo.displayName}? [y/N]: `);
       if (!confirmed) {
         console.error(gray("Cancelled."));
         return;
@@ -129,18 +126,4 @@ export async function runDelete(arg: string | undefined, nonInteractive = false,
   // Output parent directory (org-level) to stdout for shell integration to cd into
   const parentDir = join(projectsDir(), repo.username);
   console.log(parentDir);
-}
-
-async function waitForConfirmation(): Promise<boolean> {
-  process.stdin.resume();
-
-  return new Promise((resolve) => {
-    const onData = (data: Buffer) => {
-      process.stdin.removeListener("data", onData);
-      process.stdin.pause();
-      const input = data.toString().trim().toLowerCase();
-      resolve(input === "y" || input === "yes");
-    };
-    process.stdin.on("data", onData);
-  });
 }

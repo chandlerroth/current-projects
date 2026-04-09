@@ -2,7 +2,7 @@ import { scanProjects } from "../lib/config.ts";
 import { select } from "../lib/prompt.ts";
 import { yellow } from "../lib/colors.ts";
 import { Spinner } from "../lib/spinner.ts";
-import { getRepoStatus, formatStatusHint } from "../lib/status.ts";
+import { getAllStatuses, formatStatusHint } from "../lib/status.ts";
 
 export async function runList(nonInteractive = false): Promise<void> {
   const repos = scanProjects();
@@ -19,9 +19,7 @@ export async function runList(nonInteractive = false): Promise<void> {
   const spinner = nonInteractive ? null : new Spinner("Checking repositories...");
   spinner?.start();
 
-  const statuses = await Promise.all(
-    repos.map((repo, i) => getRepoStatus(repo, i + 1))
-  );
+  const statuses = await getAllStatuses(repos);
 
   spinner?.stop();
 
