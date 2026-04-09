@@ -1,4 +1,4 @@
-import { PROJECTS_DIR } from "../lib/paths.ts";
+import { projectsDir } from "../lib/paths.ts";
 import { cloneRepo, isGitRepo, executeGitWithOutput, executeGit } from "../lib/git.ts";
 import { green, red, yellow } from "../lib/colors.ts";
 import { join, basename } from "path";
@@ -60,9 +60,10 @@ async function runCreateFromCwd(): Promise<void> {
   }
 
   // Move repo into ~/Projects/<owner>/<name> if not already there
-  const targetPath = join(PROJECTS_DIR, username.toLowerCase(), name.toLowerCase());
+  const root = projectsDir();
+  const targetPath = join(root, username.toLowerCase(), name.toLowerCase());
   if (cwd !== targetPath) {
-    mkdirSync(join(PROJECTS_DIR, username.toLowerCase()), { recursive: true });
+    mkdirSync(join(root, username.toLowerCase()), { recursive: true });
     renameSync(cwd, targetPath);
     console.error(green(`Moved to ${targetPath}`));
     console.log(targetPath);
@@ -72,7 +73,120 @@ async function runCreateFromCwd(): Promise<void> {
   }
 }
 
-export async function runCreate(repoName: string | undefined): Promise<void> {
+function emitJson(obj: unknown): void {
+  console.log(JSON.stringify(obj, null, 2));
+}
+
+async function runCreateNonInteractive(repoName: string | undefined): Promise<void> {
+  if (!repoName) {
+    emitJson({ success: false, error: "Missing name. Pass `--name=<name|org/name>`." });
+    process.exit(1);
+  }
+  if (repoName === ".") {
+    // Publish-from-cwd path. Reuses interactive flow but its output is text;
+    // for non-interactive we re-implement the minimum needed to emit JSON.
+    const cwd = process.cwd();
+    if (!(await isGitRepo(cwd))) {
+      emitJson({ success: false, error: "Current directory is not a git repo." });
+      process.exit(1);
+    }
+    let username: string;
+    try {
+      username = await getCurrentUser();
+    } catch (e) {
+      emitJson({ success: false, error: e instanceof Error ? e.message : "Failed to get GitHub user." });
+      process.exit(1);
+    }
+    const name = basename(cwd);
+    const fullName = `${username}/${name}`;
+    const { stdout: remoteUrl } = await executeGitWithOutput(["remote", "get-url", "origin"], cwd);
+    if (remoteUrl) {
+      emitJson({ success: false, error: `Remote 'origin' already set to ${remoteUrl}` });
+      process.exit(1);
+    }
+    let created;
+    try {
+      created = await createRepo(username, name);
+    } catch (e) {
+      emitJson({ success: false, error: e instanceof Error ? e.message : `Failed to create ${fullName}` });
+      process.exit(1);
+    }
+    const { exitCode: addExit } = await executeGit(["remote", "add", "origin", created.sshUrl], cwd);
+    if (addExit !== 0) {
+      emitJson({ success: false, error: "Failed to add remote origin." });
+      process.exit(1);
+    }
+    const { stdout: branch } = await executeGitWithOutput(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+    if (branch) await executeGit(["push", "-u", "origin", branch], cwd);
+
+    const root = projectsDir();
+    const targetPath = join(root, username.toLowerCase(), name.toLowerCase());
+    if (cwd !== targetPath) {
+      mkdirSync(join(root, username.toLowerCase()), { recursive: true });
+      renameSync(cwd, targetPath);
+    }
+    emitJson({
+      success: true,
+      nameWithOwner: created.nameWithOwner,
+      fullPath: targetPath,
+      sshUrl: created.sshUrl,
+    });
+    return;
+  }
+
+  if (repoName.startsWith("-")) {
+    emitJson({ success: false, error: `Invalid repo name: ${repoName}` });
+    process.exit(1);
+  }
+
+  let owner: string;
+  let name: string;
+  if (repoName.includes("/")) {
+    const parts = repoName.split("/");
+    owner = parts[0];
+    name = parts[1];
+  } else {
+    try {
+      owner = await getCurrentUser();
+    } catch (e) {
+      emitJson({ success: false, error: e instanceof Error ? e.message : "Failed to get GitHub user." });
+      process.exit(1);
+    }
+    name = repoName;
+  }
+  const fullName = `${owner}/${name}`;
+  const localPath = join(projectsDir(), owner.toLowerCase(), name.toLowerCase());
+
+  if (await isGitRepo(localPath)) {
+    emitJson({ success: false, error: `${fullName} already exists at ${localPath}` });
+    process.exit(1);
+  }
+  let created;
+  try {
+    created = await createRepo(owner, name);
+  } catch (e) {
+    emitJson({ success: false, error: e instanceof Error ? e.message : `Failed to create ${fullName}` });
+    process.exit(1);
+  }
+  const ok = await cloneRepo(created.sshUrl, localPath);
+  if (!ok) {
+    emitJson({ success: false, error: `Failed to clone ${fullName}` });
+    process.exit(1);
+  }
+  emitJson({
+    success: true,
+    nameWithOwner: created.nameWithOwner,
+    fullPath: localPath,
+    sshUrl: created.sshUrl,
+  });
+}
+
+export async function runCreate(
+  repoName: string | undefined,
+  nonInteractive = false,
+): Promise<void> {
+  if (nonInteractive) return runCreateNonInteractive(repoName);
+
   if (!repoName) {
     console.error(red("Usage: prj create <repo-name>"));
     console.error("Examples:");
@@ -110,7 +224,7 @@ export async function runCreate(repoName: string | undefined): Promise<void> {
   }
 
   const fullName = `${owner}/${name}`;
-  const localPath = join(PROJECTS_DIR, owner.toLowerCase(), name.toLowerCase());
+  const localPath = join(projectsDir(), owner.toLowerCase(), name.toLowerCase());
 
   // Check if already exists locally
   if (await isGitRepo(localPath)) {

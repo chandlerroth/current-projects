@@ -79,20 +79,37 @@ prj rm .    # current directory
 
 ## Commands
 
-| Command | Alias | Description |
-|---------|-------|-------------|
-| `prj init` | - | Initialize `~/Projects` directory |
-| `prj add [repo]` | `a` | Clone a repository (interactive picker if no repo given) |
-| `prj create <name>` | `c` | Create a new private GitHub repo and clone it |
-| `prj create .` | - | Publish current directory as a private GitHub repo |
-| `prj list` | `l` | Interactive project selector |
-| `prj rm [index\|.]` | - | Remove a project (interactive picker if no index given) |
+| Command | Alias | Description | `--non-interactive` |
+|---------|-------|-------------|---------------------|
+| `prj init` | - | Initialize `~/Projects` directory | ✓ |
+| `prj add [repo]` | `a` | Clone a repository (interactive picker if no repo given) | ✓ (`--repo=<url>`) |
+| `prj create <name>` | `c` | Create a new private GitHub repo and clone it | ✓ (`--name=<name>`) |
+| `prj create .` | - | Publish current directory as a private GitHub repo | ✓ |
+| `prj list` | `l` | Interactive project selector | ✓ |
+| `prj search [query]` | `s` | Search GitHub repos (interactive picker if no query) | ✓ |
+| `prj rm [index\|.]` | - | Remove a project (interactive picker if no index given) | ✓ (`--force` for dirty repos) |
+| `prj auth [token]` | - | Manage GitHub token (status / login / logout) | ✓ (`--action=`, `--token=`) |
 
 ## Flags
 
 | Flag | Description |
 |------|-------------|
-| `--non-interactive` | Disable interactive prompts (`list` prints status, `rm` requires index) |
+| `--non-interactive` | Disable interactive prompts and emit JSON. Required for agent/script use. |
+| `--force` | Skip safety checks (`rm` only) |
+| `--repo=<url>` | `add`: repo to clone (shorthand, SSH, or HTTPS) |
+| `--name=<name>` | `create`: name (`my-app`) or `org/name` |
+| `--action=<a>` | `auth`: one of `status`, `login`, `logout` |
+| `--token=<token>` | `auth login`: GitHub token to persist |
+
+### Agent / scripting examples
+
+```bash
+prj list --non-interactive | jq '.[] | select(.changes > 0)'
+prj add  --non-interactive --repo=acme/widget
+prj create --non-interactive --name=my-app
+prj auth --non-interactive --action=status
+prj auth --non-interactive --action=login --token=ghp_xxx
+```
 
 ## Status Indicators
 

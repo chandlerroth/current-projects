@@ -1,7 +1,15 @@
 import { homedir } from "os";
 import { join } from "path";
 
-export const PROJECTS_DIR = join(homedir(), "Projects");
+/**
+ * Resolve `~/Projects` lazily. Reading at call time (rather than caching at
+ * module load) lets tests override `$HOME` and exercise commands directly.
+ */
+export function projectsDir(): string {
+  // Prefer $HOME so tests can point a temp dir at the resolver. `os.homedir()`
+  // is cached on macOS and won't reflect runtime env changes.
+  return join(process.env.HOME || homedir(), "Projects");
+}
 
 export interface RepoInfo {
   username: string;
@@ -66,7 +74,7 @@ export function parseRepoUrl(url: string): RepoInfo | null {
     return null;
   }
 
-  const fullPath = join(PROJECTS_DIR, username, repoName);
+  const fullPath = join(projectsDir(), username, repoName);
   const displayName = `${username}/${repoName}`;
 
   return { username, repoName, fullPath, displayName };
@@ -76,7 +84,7 @@ export function parseRepoUrl(url: string): RepoInfo | null {
  * Get display name from a repo path
  */
 export function getDisplayNameFromPath(repoPath: string): string {
-  const relative = repoPath.replace(PROJECTS_DIR + "/", "");
+  const relative = repoPath.replace(projectsDir() + "/", "");
   const parts = relative.split("/");
   if (parts.length >= 2) {
     return `${parts[0]}/${parts[1]}`;

@@ -6,7 +6,49 @@ import { select } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
 import { fetchGhRepos, type GhRepo } from "../lib/gh-api.ts";
 
-export async function runAdd(repoUrl: string | undefined): Promise<void> {
+function emitJson(obj: unknown): void {
+  console.log(JSON.stringify(obj, null, 2));
+}
+
+export async function runAdd(
+  repoUrl: string | undefined,
+  nonInteractive = false,
+): Promise<void> {
+  // --non-interactive: no picker, no prompts. Require an explicit repo arg.
+  if (nonInteractive) {
+    if (!repoUrl) {
+      emitJson({ success: false, error: "Missing repo argument. Pass `--repo=<url|shorthand>` or a positional repo." });
+      process.exit(1);
+    }
+    const fullUrl = expandRepoUrl(repoUrl);
+    const repoInfo = parseRepoUrl(fullUrl);
+    if (!repoInfo) {
+      emitJson({ success: false, error: `Invalid repository URL format: ${repoUrl}` });
+      process.exit(1);
+    }
+    if (await isGitRepo(repoInfo.fullPath)) {
+      emitJson({
+        success: true,
+        cloned: false,
+        displayName: repoInfo.displayName,
+        fullPath: repoInfo.fullPath,
+      });
+      return;
+    }
+    const ok = await cloneRepo(fullUrl, repoInfo.fullPath);
+    if (!ok) {
+      emitJson({ success: false, error: `Failed to clone ${repoInfo.displayName}` });
+      process.exit(1);
+    }
+    emitJson({
+      success: true,
+      cloned: true,
+      displayName: repoInfo.displayName,
+      fullPath: repoInfo.fullPath,
+    });
+    return;
+  }
+
   if (!repoUrl) {
     // Interactive mode: fetch repos from GitHub
     const spinner = new Spinner("Fetching repos from GitHub...");

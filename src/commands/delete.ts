@@ -1,6 +1,6 @@
 import { scanProjects } from "../lib/config.ts";
 import { getChangedFilesCount, getAheadBehind, getUpstream, getStashCount, isGitRepo } from "../lib/git.ts";
-import { PROJECTS_DIR } from "../lib/paths.ts";
+import { projectsDir } from "../lib/paths.ts";
 import { red, yellow, gray } from "../lib/colors.ts";
 import { select } from "../lib/prompt.ts";
 import { Spinner } from "../lib/spinner.ts";
@@ -127,7 +127,7 @@ export async function runDelete(arg: string | undefined, nonInteractive = false,
   await proc.exited;
 
   // Output parent directory (org-level) to stdout for shell integration to cd into
-  const parentDir = join(PROJECTS_DIR, repo.username);
+  const parentDir = join(projectsDir(), repo.username);
   console.log(parentDir);
 }
 

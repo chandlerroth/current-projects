@@ -88,6 +88,16 @@ async function main() {
 
   const nonInteractive = args.includes("--non-interactive");
   const force = args.includes("--force");
+  // Extract `--key=value` flags for non-interactive command inputs.
+  function flag(name: string): string | undefined {
+    const prefix = `--${name}=`;
+    const hit = args.find((a) => a.startsWith(prefix));
+    return hit ? hit.slice(prefix.length) : undefined;
+  }
+  const repoFlag = flag("repo");
+  const nameFlag = flag("name");
+  const tokenFlag = flag("token");
+  const actionFlag = flag("action");
   // Strip flags from positional args
   const positional = args.filter((a) => !a.startsWith("--"));
 
@@ -97,11 +107,11 @@ async function main() {
   try {
     switch (canonical) {
       case "init":
-        await runInit();
+        await runInit(nonInteractive);
         break;
 
       case "add":
-        await runAdd(positional[1]);
+        await runAdd(repoFlag ?? positional[1], nonInteractive);
         break;
 
       case "list":
@@ -117,11 +127,11 @@ async function main() {
         break;
 
       case "create":
-        await runCreate(positional[1]);
+        await runCreate(nameFlag ?? positional[1], nonInteractive);
         break;
 
       case "auth":
-        await runAuth(positional[1], positional[2]);
+        await runAuth(positional[1], tokenFlag ?? positional[2], nonInteractive, actionFlag);
         break;
 
       case "shell-init":

@@ -1,13 +1,13 @@
 import { readdirSync } from "fs";
 import { join } from "path";
-import { PROJECTS_DIR, type RepoInfo } from "./paths.ts";
+import { projectsDir, type RepoInfo } from "./paths.ts";
 
 /**
  * Check if projects directory exists
  */
 export async function projectsDirExists(): Promise<boolean> {
   try {
-    const proc = Bun.spawn(["test", "-d", PROJECTS_DIR]);
+    const proc = Bun.spawn(["test", "-d", projectsDir()]);
     await proc.exited;
     return proc.exitCode === 0;
   } catch {
@@ -19,7 +19,7 @@ export async function projectsDirExists(): Promise<boolean> {
  * Create the projects directory
  */
 export async function createProjectsDir(): Promise<void> {
-  const proc = Bun.spawn(["mkdir", "-p", PROJECTS_DIR]);
+  const proc = Bun.spawn(["mkdir", "-p", projectsDir()]);
   await proc.exited;
 }
 
@@ -29,11 +29,12 @@ export async function createProjectsDir(): Promise<void> {
  */
 export function scanProjects(): RepoInfo[] {
   const repos: RepoInfo[] = [];
+  const root = projectsDir();
   try {
-    const orgs = readdirSync(PROJECTS_DIR, { withFileTypes: true });
+    const orgs = readdirSync(root, { withFileTypes: true });
     for (const org of orgs) {
       if (!org.isDirectory() || org.name.startsWith(".")) continue;
-      const orgPath = join(PROJECTS_DIR, org.name);
+      const orgPath = join(root, org.name);
       const projects = readdirSync(orgPath, { withFileTypes: true });
       for (const project of projects) {
         if (!project.isDirectory() || project.name.startsWith(".")) continue;

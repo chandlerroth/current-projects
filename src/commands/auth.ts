@@ -140,7 +140,82 @@ function mask(token: string): string {
   return `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
 
-export async function runAuth(sub: string | undefined, token: string | undefined): Promise<void> {
+function emitAuthJson(obj: unknown): void {
+  console.log(JSON.stringify(obj, null, 2));
+}
+
+async function runAuthNonInteractive(
+  action: string | undefined,
+  token: string | undefined,
+): Promise<void> {
+  const a = action || "status";
+  if (a !== "status" && a !== "login" && a !== "logout") {
+    emitAuthJson({ success: false, action: a, error: `Unknown action: ${a}. Use status, login, or logout.` });
+    process.exit(1);
+  }
+
+  if (a === "logout") {
+    const cfg = readConfig();
+    delete cfg.githubToken;
+    writeConfig(cfg);
+    _resetTokenCache();
+    emitAuthJson({ success: true, action: "logout" });
+    return;
+  }
+
+  if (a === "login") {
+    if (!token) {
+      emitAuthJson({ success: false, action: "login", error: "Missing token. Pass `--token=<token>`." });
+      process.exit(1);
+    }
+    const prevEnv = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = token;
+    _resetTokenCache();
+    let user: string;
+    try {
+      user = await getCurrentUser();
+    } catch (e) {
+      if (prevEnv === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = prevEnv;
+      _resetTokenCache();
+      emitAuthJson({ success: false, action: "login", error: e instanceof Error ? e.message : "Token verification failed" });
+      process.exit(1);
+    }
+    if (prevEnv === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = prevEnv;
+    const cfg = readConfig();
+    cfg.githubToken = token;
+    writeConfig(cfg);
+    _resetTokenCache();
+    emitAuthJson({ success: true, action: "login", user });
+    return;
+  }
+
+  // status
+  const cfg = readConfig();
+  const envTok = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const tokenSource = cfg.githubToken ? "config" : envTok ? "env" : null;
+  if (!tokenSource) {
+    emitAuthJson({ success: true, action: "status", authenticated: false, user: null, tokenSource: null });
+    return;
+  }
+  try {
+    const user = await getCurrentUser();
+    emitAuthJson({ success: true, action: "status", authenticated: true, user, tokenSource });
+  } catch (e) {
+    emitAuthJson({ success: false, action: "status", error: e instanceof Error ? e.message : "Token invalid", tokenSource });
+    process.exit(1);
+  }
+}
+
+export async function runAuth(
+  sub: string | undefined,
+  token: string | undefined,
+  nonInteractive = false,
+  actionFlag?: string,
+): Promise<void> {
+  if (nonInteractive) return runAuthNonInteractive(actionFlag ?? sub, token);
+
   // `prj auth` with no args = status
   // `prj auth <token>` = save (shorthand for `prj auth login <token>`)
   // `prj auth login <token>` = save
